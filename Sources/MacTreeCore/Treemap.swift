@@ -94,50 +94,44 @@ public func layout(_ root: Node, in area: CGRect, options: LayoutOptions) -> [Ti
     return tiles
 }
 
-private typealias Item = (content: Tile.Content, value: Double)
+private typealias Placed = (content: Tile.Content, rect: CGRect)
 
 private func placeChildren(
     of node: Node, in area: CGRect, depth: Int, options: LayoutOptions,
     into tiles: inout [Tile]
 ) {
-    let items = pickItems(of: node, in: area, options: options)
-    for (item, raw) in zip(items, squarify(items.map(\.value), in: area)) {
-        var rect = raw.insetBy(dx: options.padding, dy: options.padding)
-        // Nested tiles run flush to their folder's right edge, so nesting
-        // reads as an indent from the left only.
-        if depth > 0, raw.maxX >= area.maxX - 0.5 {
-            rect.size.width += options.padding
-        }
-        guard rect.width >= options.minTile, rect.height >= options.minTile else {
-            continue
-        }
+    for (content, rect) in fitChildren(of: node, in: area, depth: depth, options: options) {
         // No room for a band and a readable body: the tile stays whole.
-        guard case .node(let child) = item.content, child.isDir,
+        guard case .node(let child) = content, child.isDir,
             let header = headerBand(rect, depth: depth, options: options)
         else {
             tiles.append(Tile(
-                content: item.content, rect: rect, depth: depth, header: nil, options: options))
+                content: content, rect: rect, depth: depth, header: nil, options: options))
             continue
         }
         let body = CGRect(
             x: rect.minX, y: header.maxY, width: rect.width, height: rect.maxY - header.maxY)
         // A body holding nothing but small items says less than the whole tile.
-        let inner = pickItems(of: child, in: body, options: options)
+        let inner = fitChildren(of: child, in: body, depth: depth + 1, options: options)
         if inner.count == 1, case .others = inner[0].content {
             tiles.append(Tile(
-                content: item.content, rect: rect, depth: depth, header: nil, options: options))
+                content: content, rect: rect, depth: depth, header: nil, options: options))
             continue
         }
         tiles.append(Tile(
-            content: item.content, rect: rect, depth: depth, header: header, options: options))
+            content: content, rect: rect, depth: depth, header: header, options: options))
         placeChildren(of: child, in: body, depth: depth + 1, options: options, into: &tiles)
     }
 }
 
 /// Children big enough for a tile of their own, largest first, and one
 /// "small items" tile for the rest, so a big child beside a lot of dust still
-/// reads as both.
-private func pickItems(of node: Node, in area: CGRect, options: LayoutOptions) -> [Item] {
+/// reads as both. Area alone can still yield a thin strip, so while any child
+/// is too thin for a label, the smallest one joins the small items. Small
+/// items may stay thin: they need no label, and demoting for them cascades.
+private func fitChildren(
+    of node: Node, in area: CGRect, depth: Int, options: LayoutOptions
+) -> [Placed] {
     guard area.width > 0, area.height > 0 else {
         return []
     }
@@ -145,16 +139,34 @@ private func pickItems(of node: Node, in area: CGRect, options: LayoutOptions) -
     let total = ranked.reduce(0) { $0 + Double($1.bytes) }
     let bytesToArea = Double(area.width * area.height) / max(total, 1)
     let minArea = Double(options.minTile * options.minTile) * 2
-    let kept = ranked.prefix { Double($0.bytes) * bytesToArea >= minArea }
-        .prefix(options.maxChildren)
-    var items: [Item] = kept.map { (.node($0), Double($0.bytes)) }
-    let tail = ranked.count - kept.count
-    if tail > 0 {
-        let bytes = ranked.dropFirst(kept.count).reduce(0) { $0 + $1.bytes }
-        items.append((.others(parent: node, bytes: bytes), Double(bytes)))
+    var kept = ranked.prefix { Double($0.bytes) * bytesToArea >= minArea }.count
+    kept = min(kept, options.maxChildren)
+    while true {
+        var items: [(content: Tile.Content, value: Double)] = ranked.prefix(kept).map {
+            (.node($0), Double($0.bytes))
+        }
+        if kept < ranked.count {
+            let bytes = ranked.dropFirst(kept).reduce(0) { $0 + $1.bytes }
+            items.append((.others(parent: node, bytes: bytes), Double(bytes)))
+        }
+        items.sort { $0.value > $1.value }
+        let placed = zip(items, squarify(items.map(\.value), in: area)).map { item, raw in
+            var rect = raw.insetBy(dx: options.padding, dy: options.padding)
+            // Nested tiles run flush to their folder's right edge, so nesting
+            // reads as an indent from the left only.
+            if depth > 0, raw.maxX >= area.maxX - 0.5 {
+                rect.size.width += options.padding
+            }
+            return (item.content, rect)
+        }
+        let thin = placed.contains { content, rect in
+            content.node != nil && (rect.width < options.minTile || rect.height < options.minTile)
+        }
+        if kept == 0 || !thin {
+            return placed.filter { $0.1.width > 0 && $0.1.height > 0 }
+        }
+        kept -= 1
     }
-    items.sort { $0.value > $1.value }
-    return items
 }
 
 private func headerBand(_ rect: CGRect, depth: Int, options: LayoutOptions) -> CGRect? {

@@ -179,8 +179,11 @@ private struct MosaicCanvas: View, Equatable {
             Text(size).font(.system(size: 12)).foregroundStyle(.secondary))
 
         // A leaf may put its size below the band, so it owns the whole tile.
+        // Cut off short of the right edge, so text never touches it.
         var label = context
-        label.clip(to: Path(tile.header ?? tile.rect))
+        let area = tile.header ?? tile.rect
+        label.clip(to: Path(CGRect(
+            x: area.minX, y: area.minY, width: max(area.width - 4, 0), height: area.height)))
         // Clear of the corner's curve.
         let padding: CGFloat = 9
         let lineHeight: CGFloat = 16
@@ -207,7 +210,11 @@ private struct MosaicCanvas: View, Equatable {
             Text(formatBytes(tile.content.bytes)).font(.system(size: 12))
                 .foregroundStyle(.tertiary))
         // Too narrow for the phrase: an ellipsis still says "more in here".
-        let fits = name.measure(in: .init(width: 1000, height: 100)).width <= tile.rect.width - 8
+        let measured = name.measure(in: .init(width: 1000, height: 100))
+        guard tile.rect.height >= measured.height else {
+            return
+        }
+        let fits = measured.width <= tile.rect.width - 8
         if !fits {
             name = context.resolve(Text("\u{2026}").font(font).foregroundStyle(.secondary))
         }
@@ -255,8 +262,10 @@ private func tileRadius(_ tile: Tile) -> CGFloat {
     tile.depth == 0 ? 10 : 8
 }
 
+/// Thin small items get their radius capped, so the ends stay round.
 private func rounded(_ rect: CGRect, _ radius: CGFloat) -> Path {
-    Path(roundedRect: rect, cornerSize: CGSize(width: radius, height: radius))
+    let radius = max(min(radius, rect.width / 2, rect.height / 2), 0)
+    return Path(roundedRect: rect, cornerSize: CGSize(width: radius, height: radius))
 }
 
 /// The title band shares the tile's top corners; its bottom is square unless

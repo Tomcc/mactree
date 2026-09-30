@@ -193,8 +193,8 @@ func child(_ node: Node, _ names: String...) -> Node {
     let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 800, height: 500), options: LayoutOptions())
     #expect(tiles.count <= 2)
     #expect(tiles.first?.node?.name == "big")
-    for tile in tiles {
-        #expect(tile.rect.width >= 30 && tile.rect.height >= 30, "every tile fits a label")
+    for tile in tiles where tile.node != nil {
+        #expect(tile.rect.width >= 30 && tile.rect.height >= 30, "every file fits a label")
     }
 }
 
@@ -219,4 +219,30 @@ func child(_ node: Node, _ names: String...) -> Node {
     let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 800, height: 500), options: LayoutOptions())
     #expect(tiles.count == 1, "subdividing would only show one small items tile")
     #expect(tiles.first?.node === objects && tiles.first?.header == nil)
+}
+
+@Test func everyChildIsDrawnOrMerged() {
+    var seed: UInt64 = 42
+    func random() -> UInt64 {
+        seed = seed &* 6364136223846793005 &+ 1442695040888963407
+        return seed >> 33
+    }
+    let options = LayoutOptions()
+    for trial in 0..<200 {
+        let root = Node(name: "/r", isDir: true)
+        for index in 0..<Int(random() % 80 + 2) {
+            root.adopt(Node(name: "f\(index)", isDir: false, bytes: random() % 1_000_000 + 1))
+        }
+        root.aggregate()
+        let area = CGRect(x: 0, y: 0, width: Double(random() % 1200 + 200), height: 500)
+        let tiles = layout(root, in: area, options: options)
+        let covered = tiles.reduce(0) { sum, tile in
+            let raw = tile.rect.insetBy(dx: -options.padding, dy: -options.padding)
+            return sum + raw.width * raw.height
+        }
+        // Small items thinner than the gaps vanish, but only as a gap-thin sliver.
+        let hole = area.width * area.height - covered
+        let sliver = 2 * options.padding * max(area.width, area.height)
+        #expect(hole < sliver, "trial \(trial) left a hole")
+    }
 }
