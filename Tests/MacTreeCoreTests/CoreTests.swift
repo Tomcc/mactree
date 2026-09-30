@@ -111,7 +111,16 @@ func child(_ node: Node, _ names: String...) -> Node {
     try tree.file(".cargo/bin/cargo", bytes: 1)
     try tree.file("Library/stuff", bytes: 1)
     try tree.file("Apps/Tool.app/Contents/Caches/c", bytes: 1)
+    try tree.file("Pictures/Photos.photoslibrary/resources/caches/c", bytes: 11_000_000)
+    try tree.file("Users/ann/Library/Preferences/p", bytes: 1)
     let root = Scanner.scan(tree.root, progress: ScanProgress()).root
+
+    let photos = child(root, "Pictures", "Photos.photoslibrary")
+    #expect(photos.isPackage && photos.kind == .other, "a package takes its place's kind")
+    #expect(photos.hidesContents(revealingSystem: false))
+    #expect(child(photos, "resources", "caches").reclaim == nil,
+        "a package's caches are its own, not to be cleared by hand")
+    #expect(child(root, "Users", "ann", "Library").kind == .system, "a home's Library")
 
     #expect(child(root, "Apps", "Tool.app").kind == .app)
     #expect(child(root, "Apps", "Tool.app").hidesContents(revealingSystem: false),

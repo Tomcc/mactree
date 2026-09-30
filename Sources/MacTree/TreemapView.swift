@@ -235,12 +235,12 @@ private struct MosaicCanvas: View, Equatable {
         let heights = lines.map { $0.measure(in: unbounded).height }
         let textHeight = heights.reduce(0, +) + (twoLines ? 2 : 0)
         var y = tile.rect.midY - textHeight / 2
-        // An app shows its icon above the name, when there is room for one.
+        // A package shows its icon above the name, when there is room for one.
         let icon = min(64, room, tile.rect.height - textHeight - 20)
-        if node.isApp, icon >= 20 {
+        if node.isPackage, icon >= 20 {
             let top = tile.rect.midY - (icon + 6 + textHeight) / 2
             context.draw(
-                Image(nsImage: appIcon(node.path)),
+                Image(nsImage: packageIcon(node.path)),
                 in: CGRect(x: tile.rect.midX - icon / 2, y: top, width: icon, height: icon))
             y = top + icon + 6
         }
@@ -349,17 +349,17 @@ private func stripes(across rect: CGRect) -> Path {
 }
 
 
-/// Icons are looked up once per app; the mosaic repaints on every resize.
-@MainActor private var appIcons: [String: NSImage] = [:]
+/// Icons are looked up once per package; the mosaic repaints on every resize.
+@MainActor private var packageIcons: [String: NSImage] = [:]
 
-@MainActor private func appIcon(_ path: String) -> NSImage {
-    if let icon = appIcons[path] {
+@MainActor private func packageIcon(_ path: String) -> NSImage {
+    if let icon = packageIcons[path] {
         return icon
     }
     let icon = NSWorkspace.shared.icon(forFile: path)
     // The icon comes sized 32 pt, and draws from its 32 pt image when scaled up.
     icon.size = NSSize(width: 128, height: 128)
-    appIcons[path] = icon
+    packageIcons[path] = icon
     return icon
 }
 

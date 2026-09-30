@@ -50,9 +50,13 @@ public final class Node: @unchecked Sendable {
         return base.hasSuffix("/") ? base + name : base + "/" + name
     }
 
-    /// An application bundle: a folder on disk, one thing to the user.
+    /// A folder that presents as a file, like an app or a Photos library:
+    /// one thing to the user, deleted whole. Set when classifying.
+    public internal(set) var isPackage = false
+
+    /// The package flavour with its own colour.
     public var isApp: Bool {
-        isDir && (name as NSString).pathExtension == "app"
+        isPackage && (name as NSString).pathExtension.lowercased() == "app"
     }
 
     /// The name to show: the root's full path shortened to its last part.

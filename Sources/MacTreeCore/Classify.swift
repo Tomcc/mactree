@@ -1,4 +1,5 @@
 import Darwin
+import Foundation
 
 // What a node is, for colour: space that can be had back, tracked by git
 // (so also in the cloud), the OS's or tools' own, or anything else.
@@ -86,17 +87,34 @@ private let systemNames: Set<String> = [
     "System", "Library", "private", "usr", "bin", "sbin", "cores", "opt",
 ]
 
+/// Folders Finder shows as files. Launch Services knows the full set, but
+/// only inside an app bundle, so this is the common part of it.
+private let packageExtensions: Set<String> = [
+    "app", "appex", "bundle", "component", "driver", "framework", "kext", "mdimporter",
+    "plugin", "prefpane", "qlgenerator", "saver", "systemextension", "vst", "vst3", "xpc",
+    "photoslibrary", "photolibrary", "musiclibrary", "tvlibrary", "imovielibrary",
+    "fcpbundle", "logicx", "band", "pages", "numbers", "key", "rtfd", "sparsebundle",
+    "xcodeproj", "xcworkspace", "xcarchive", "dsym", "docset", "playground",
+]
+
+func isPackageName(_ name: String) -> Bool {
+    packageExtensions.contains((name as NSString).pathExtension.lowercased())
+}
+
 /// Top-down: why each node's space can be had back, inherited downwards.
-/// Runs before git, which has nothing to say about reclaimable space.
-func markReclaim(_ node: Node) {
+/// Runs before git, which has nothing to say about reclaimable space. A
+/// package's insides are its own business: a Photos library's caches are
+/// not to be cleared by hand.
+func markReclaim(_ node: Node, inPackage: Bool = false) {
     let names = Set(node.children.map(\.name))
     for child in node.children {
+        child.isPackage = child.isDir && isPackageName(child.name)
         child.reclaim = node.reclaim
-        if child.isDir && child.reclaim == nil {
+        if child.isDir && child.reclaim == nil && !inPackage {
             child.reclaim = reclaim(
                 ofName: child.name, parentName: node.displayName, hasSibling: names.contains)
         }
-        markReclaim(child)
+        markReclaim(child, inPackage: inPackage || child.isPackage)
     }
 }
 
@@ -119,7 +137,8 @@ private func classifyChildren(of node: Node, kind: Kind, volumeRoot: Bool) {
             // Before System: a repository's `.github` is its own, not the OS's.
             childKind = .git
         } else if child.isDir
-            && (child.name.hasPrefix(".") || volumeRoot && systemNames.contains(child.name))
+            && (child.name.hasPrefix(".") || volumeRoot && systemNames.contains(child.name)
+                || child.name == "Library" && isHome(node))
         {
             childKind = .system
         } else {
@@ -137,6 +156,11 @@ private func sumReclaimable(_ node: Node) -> UInt64 {
     return node.reclaimableBytes
 }
 
+/// A user's home: the scanned home itself, or a folder in `Users`.
+private func isHome(_ node: Node) -> Bool {
+    node.parent?.displayName == "Users" || node.path == NSHomeDirectory()
+}
+
 /// Less than this is no reason to open a System folder: a `.git` holds a
 /// few kilobytes of LFS cache, which would otherwise lay it all out.
 private let worthOpening: UInt64 = 10_000_000
@@ -144,9 +168,9 @@ private let worthOpening: UInt64 = 10_000_000
 extension Node {
     /// A System folder keeps its contents to itself, unless revealed or
     /// holding real reclaimable space: there is nothing else to get back.
-    /// An app always does: it is deleted whole, never in parts.
+    /// A package always does: it is deleted whole, never in parts.
     public func hidesContents(revealingSystem: Bool) -> Bool {
-        !revealingSystem && (isApp || kind == .system && reclaimableBytes < worthOpening)
+        !revealingSystem && (isPackage || kind == .system && reclaimableBytes < worthOpening)
     }
 }
 
