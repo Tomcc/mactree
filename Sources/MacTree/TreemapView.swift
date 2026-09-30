@@ -100,7 +100,7 @@ private struct MosaicCanvas: View, Equatable {
 
     /// Flat tiles, separated by the gaps between them. Bodies are neutral and
     /// only the title band carries the kind's colour; a thin top-left
-    /// highlight lifts each tile off its parent. One path per depth and colour
+    /// highlight and soft shadow lift each tile off its parent. One path per depth and colour
     /// keeps it to a handful of draws; depth order matters, since children
     /// paint over their parent's body.
     private func paintFills(_ context: inout GraphicsContext) {
@@ -136,15 +136,23 @@ private struct MosaicCanvas: View, Equatable {
         context.fill(
             Path(CGRect(origin: .zero, size: context.clipBoundingRect.size)),
             with: .color(Palette.well(in: environment)))
+        let dark = environment.colorScheme == .dark
         for depth in bodies.keys.sorted() {
             if let body = bodies[depth] {
-                context.fill(body, with: .color(Palette.body(depth: depth, in: environment)))
+                // A soft shadow on the parent, so deep stacks of similar greys
+                // still read as layers; clipped to the parent, never spilling.
+                var layer = context
+                if let parents = bodies[depth - 1] {
+                    layer.clip(to: parents)
+                }
+                layer.addFilter(
+                    .shadow(color: .black.opacity(dark ? 0.35 : 0.1), radius: 5, y: 1))
+                layer.fill(body, with: .color(Palette.body(depth: depth, in: environment)))
             }
             for (kind, path) in titles[depth] ?? [:] {
                 context.fill(path, with: .color(Palette.title(kind, depth: depth, in: environment)))
             }
         }
-        let dark = environment.colorScheme == .dark
         context.stroke(highlights, with: .color(.white.opacity(dark ? 0.08 : 0.8)), lineWidth: 1)
         context.stroke(shades, with: .color(.black.opacity(dark ? 0.4 : 0.12)), lineWidth: 1)
     }
