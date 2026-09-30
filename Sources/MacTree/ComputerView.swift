@@ -8,9 +8,14 @@ struct ComputerView: View {
     let chooseFolder: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var volumes: [Volume] = []
+    @State private var hasFullDiskAccess = FullDiskAccess.isGranted
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !hasFullDiskAccess {
+                AccessRequest()
+                Divider()
+            }
             List {
                 Section("Volumes") {
                     ForEach(volumes) { volume in
@@ -44,13 +49,41 @@ struct ComputerView: View {
             }
             .padding()
         }
-        .frame(width: 460, height: 380)
+        .frame(width: 460, height: hasFullDiskAccess ? 380 : 470)
         .onAppear { volumes = Volume.mounted() }
+        // Granted in System Settings while the sheet is up.
+        .task {
+            while !hasFullDiskAccess && !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                hasFullDiskAccess = FullDiskAccess.isGranted
+            }
+        }
     }
 
     private func pick(_ path: String) {
         dismiss()
         scan(path)
+    }
+}
+
+/// Without Full Disk Access, macOS hides the Trash, Mail and much of ~/Library from every app.
+private struct AccessRequest: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28))
+                .symbolRenderingMode(.multicolor)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("MacTree needs Full Disk Access").font(.headline)
+                Text("to see inside the Trash, ~/Library and other private folders")
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Open System Settings", action: FullDiskAccess.openSettings)
+                    .padding(.top, 4)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
