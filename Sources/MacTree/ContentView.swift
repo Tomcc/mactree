@@ -89,6 +89,10 @@ struct ContentView: View {
                 Label("Computer", systemImage: "desktopcomputer")
             }
             .help("Scan a disk or another folder")
+            Toggle(isOn: Binding(get: { model.revealSystem }, set: { model.revealSystem = $0 })) {
+                Label("Reveal System Files", systemImage: "eye")
+            }
+            .help("Show what is inside System folders")
             Button {
                 model.rescan()
             } label: {

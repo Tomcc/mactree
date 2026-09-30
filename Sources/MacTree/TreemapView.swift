@@ -36,7 +36,12 @@ struct TreemapView: View {
                     model.selected = content
                 }
             }
-            .overlay(ContextMenuLayer(model: model, tiles: tiles))
+            .overlay {
+                // Offscreen rendering draws AppKit views as a placeholder.
+                if !Snapshot.isRendering {
+                    ContextMenuLayer(model: model, tiles: tiles)
+                }
+            }
         }
         .background(Palette.background)
     }

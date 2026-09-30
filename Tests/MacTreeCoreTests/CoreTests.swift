@@ -50,7 +50,7 @@ func child(_ node: Node, _ names: String...) -> Node {
     try tree.file("a/b/small.txt", bytes: 10)
     try tree.file("top.txt", bytes: 5000)
 
-    let root = Scanner.scan(tree.root, progress: ScanProgress())
+    let root = Scanner.scan(tree.root, progress: ScanProgress()).root
     let inA = tree.blocks("a/big.bin") + tree.blocks("a/b/small.txt")
     #expect(root.bytes == inA + tree.blocks("top.txt"))
     #expect(root.files == 3)
@@ -64,7 +64,7 @@ func child(_ node: Node, _ names: String...) -> Node {
     let tree = try TempTree()
     try tree.file("one", bytes: 200_000)
     #expect(link(tree.root + "/one", tree.root + "/two") == 0)
-    let root = Scanner.scan(tree.root, progress: ScanProgress())
+    let root = Scanner.scan(tree.root, progress: ScanProgress()).root
     #expect(root.bytes == tree.blocks("one"))
     #expect(root.files == 2)
 }
@@ -73,7 +73,7 @@ func child(_ node: Node, _ names: String...) -> Node {
     let tree = try TempTree()
     try tree.file("locked/secret", bytes: 100)
     #expect(chmod(tree.root + "/locked", 0) == 0)
-    let root = Scanner.scan(tree.root, progress: ScanProgress())
+    let root = Scanner.scan(tree.root, progress: ScanProgress()).root
     #expect(root.unreadable == 1)
     #expect(child(root, "locked").unreadableHere)
 }
@@ -82,7 +82,7 @@ func child(_ node: Node, _ names: String...) -> Node {
     let tree = try TempTree()
     try tree.file("real/data", bytes: 500_000)
     #expect(symlink(tree.root + "/real", tree.root + "/alias") == 0)
-    let root = Scanner.scan(tree.root, progress: ScanProgress())
+    let root = Scanner.scan(tree.root, progress: ScanProgress()).root
     #expect(!child(root, "alias").isDir)
     #expect(child(root, "alias").bytes < 100_000)
 }
@@ -97,32 +97,81 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(progress.count == 55)
 }
 
-@Test func classificationFindsReclaimableGitAndInherits() throws {
+@Test func classificationFindsReclaimableSystemAndInherits() throws {
     let tree = try TempTree()
     try tree.file(".cache/kache/store/b", bytes: 1)
     try tree.file("rusty/Cargo.toml", bytes: 1)
     try tree.file("rusty/target/debug/c", bytes: 1)
     try tree.file("jsy/target/d", bytes: 1)
     try tree.file("app/Logs/today.log", bytes: 1)
-    try tree.file("world/.git/objects/e", bytes: 9000)
-    try tree.file("world/.git/lfs/cache/x", bytes: 1)
-    try tree.file("bare/HEAD", bytes: 1)
-    try tree.file("bare/refs/r", bytes: 1)
-    try tree.file("bare/objects/p", bytes: 1)
+    try tree.file(".rustup/toolchains/stable/lib", bytes: 1)
+    try tree.file(".cargo/registry/cache/crate", bytes: 1)
+    try tree.file(".cargo/bin/cargo", bytes: 1)
     try tree.file("Library/stuff", bytes: 1)
-    let root = Scanner.scan(tree.root, progress: ScanProgress())
+    let root = Scanner.scan(tree.root, progress: ScanProgress()).root
 
     #expect(child(root, ".cache", "kache", "store").kind == .reclaimable)
     #expect(child(root, ".cache", "kache", "store").reclaim == .regenerable)
     #expect(child(root, "rusty", "target").reclaim == .buildOutput)
     #expect(child(root, "jsy", "target").kind == .other)
     #expect(child(root, "app", "Logs", "today.log").reclaim == .logs, "files inherit")
-    #expect(child(root, "world").kind == .other)
-    #expect(child(root, "world", ".git", "objects").kind == .git)
-    #expect(child(root, "world", ".git", "lfs", "cache").kind == .reclaimable,
-        "reclaimable wins over git")
-    #expect(child(root, "bare").kind == .git, "a bare repository by its shape")
+    #expect(child(root, ".rustup", "toolchains", "stable").kind == .system, "dot-folders")
+    #expect(child(root, ".cargo", "registry", "cache").kind == .reclaimable,
+        "reclaimable wins over system")
     #expect(child(root, "Library").kind == .other, "system names only at a volume root")
+
+    #expect(child(root, ".rustup").hidesContents(revealingSystem: false))
+    #expect(!child(root, ".rustup").hidesContents(revealingSystem: true))
+    #expect(!child(root, ".cargo").hidesContents(revealingSystem: false),
+        "a system folder with something reclaimable inside shows it")
+    #expect(child(root, ".cargo", "bin").hidesContents(revealingSystem: false))
+}
+
+@Test func trackedFilesAreGit() throws {
+    let tree = try TempTree()
+    try tree.file("repo/Cargo.toml", bytes: 1)
+    try tree.file("repo/src/main.rs", bytes: 1)
+    try tree.file("repo/.github/ci.yml", bytes: 1)
+    try tree.file("repo/notes.txt", bytes: 1)
+    try tree.file("repo/target/debug/app", bytes: 1)
+    let git = { (arguments: [String]) in
+        let process = try Process.run(
+            URL(fileURLWithPath: "/usr/bin/git"), arguments: ["-C", tree.root + "/repo"] + arguments)
+        process.waitUntilExit()
+        #expect(process.terminationStatus == 0)
+    }
+    try git(["init", "-q"])
+    try tree.file("repo/.git/logs/HEAD", bytes: 1)
+    try git(["add", "Cargo.toml", "src", ".github"])
+    let scan = Scanner.scan(tree.root, progress: ScanProgress())
+    let root = scan.root
+
+    #expect(scan.gitFailures.isEmpty)
+    #expect(child(root, "repo", "Cargo.toml").kind == .git)
+    #expect(child(root, "repo", "src").kind == .git, "a folder of only tracked files")
+    #expect(child(root, "repo", ".github").kind == .git, "tracked wins over dot-folder")
+    #expect(child(root, "repo", "notes.txt").kind == .other)
+    #expect(child(root, "repo", "target").kind == .reclaimable)
+    #expect(child(root, "repo", ".git").kind == .system)
+    #expect(child(root, "repo", ".git", "logs").kind == .system, "reflogs are not logs")
+    #expect(child(root, "repo").kind == .other, "mixed folders stay neutral")
+}
+
+@Test func hiddenSystemFoldersStayWhole() {
+    let root = Node(name: "/r", isDir: true)
+    let rustup = Node(name: ".rustup", isDir: true)
+    for index in 0..<4 {
+        rustup.adopt(Node(name: "t\(index)", isDir: false, bytes: 1000))
+    }
+    root.adopt(rustup)
+    root.adopt(Node(name: "file", isDir: false, bytes: 1000))
+    root.aggregate()
+    rustup.kind = .system
+    let area = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+    var options = LayoutOptions()
+    #expect(layout(root, in: area, options: options).count == 2)
+    options.revealSystem = true
+    #expect(layout(root, in: area, options: options).count == 6)
 }
 
 @Test func volumeRootsAreDetected() {

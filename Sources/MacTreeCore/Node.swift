@@ -28,6 +28,11 @@ public final class Node: @unchecked Sendable {
     public var isMountPoint = false
     public var kind: Kind = .other
     public var reclaim: Reclaim?
+    /// A file some repository tracks, or a folder of only such files.
+    public var tracked = false
+    /// Reclaimable itself or somewhere below: a System folder shows its
+    /// contents only then, since that is the one reason to look inside.
+    public var holdsReclaimable = false
 
     public init(name: String, isDir: Bool, bytes: UInt64 = 0, newest: Int = 0) {
         self.name = name

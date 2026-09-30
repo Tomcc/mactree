@@ -87,6 +87,8 @@ public struct LayoutOptions: Equatable, Sendable {
     /// for about three by three of the smallest tiles: depth follows the room
     /// on screen, not a fixed level count.
     public var minBody = CGSize(width: 90, height: 90)
+    /// Draw inside System folders too; see `Node.hidesContents`.
+    public var revealSystem = false
 
     public init() {}
 }
@@ -114,6 +116,7 @@ private func placeChildren(
         }
         // No room for a band and a readable body: the tile stays whole.
         guard case .node(let child) = content, child.isDir,
+            !child.hidesContents(revealingSystem: options.revealSystem),
             let header = headerBand(rect, depth: depth, options: options)
         else {
             tiles.append(Tile(

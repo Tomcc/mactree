@@ -61,9 +61,11 @@ struct MacTreeApp: App {
                     }
                 }
                 .keyboardShortcut(.downArrow)
-                .disabled(model.selected?.owner.isDir != true)
+                .disabled(model.selected.map { !model.canOpen($0.owner) } ?? true)
             }
             CommandGroup(after: .toolbar) {
+                Toggle("Reveal System Files", isOn: $model.revealSystem)
+                    .keyboardShortcut(".", modifiers: [.command, .shift])
                 Button("Refresh") { model.rescan() }.keyboardShortcut("r")
             }
         }
@@ -101,7 +103,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 enum Snapshot {
+    static private(set) var isRendering = false
+
     static func render(path: String, to output: String) -> Int32 {
+        isRendering = true
         let model = AppModel()
         let started = Date()
         model.scanBlocking(path)
@@ -112,6 +117,9 @@ enum Snapshot {
         print(
             "scanned \(root.path): \(root.bytes) bytes, \(root.files) files, "
                 + "\(root.dirs) dirs, \(root.unreadable) unreadable in \(seconds) s")
+        if let error = model.error {
+            print("error: \(error)")
+        }
         for (scheme, suffix) in [(ColorScheme.light, "light"), (.dark, "dark")] {
             let content = ContentView(model: model, chooseFolder: {})
                 .frame(width: 1440, height: 900)

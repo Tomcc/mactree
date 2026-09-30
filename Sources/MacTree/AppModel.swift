@@ -24,6 +24,12 @@ final class AppModel {
     private(set) var treeVersion = 0
     private(set) var emptyingTrash = false
     var confirmingEmptyTrash = false
+    /// Show inside System folders; off, they are single tiles.
+    var revealSystem = false {
+        didSet {
+            leaveHiddenFolders()
+        }
+    }
     var showingComputer = false
     var error: String?
 
@@ -33,6 +39,7 @@ final class AppModel {
         let size: CGSize
         let node: ObjectIdentifier
         let version: Int
+        let revealSystem: Bool
     }
 
     func scan(_ path: String) {
@@ -46,9 +53,9 @@ final class AppModel {
                     try await Task.sleep(for: .milliseconds(100))
                 }
             }
-            let tree = await Task.detached { Scanner.scan(path, progress: progress) }.value
+            let result = await Task.detached { Scanner.scan(path, progress: progress) }.value
             poll.cancel()
-            finishScan(tree)
+            finishScan(result)
         }
     }
 
@@ -57,7 +64,12 @@ final class AppModel {
         finishScan(Scanner.scan(path, progress: ScanProgress()))
     }
 
-    private func finishScan(_ tree: Node) {
+    private func finishScan(_ result: MacTreeCore.Scanner.Result) {
+        let tree = result.root
+        if let first = result.gitFailures.first {
+            error = "Git couldn\u{2019}t list \(result.gitFailures.count) repositories, so their "
+                + "files aren\u{2019}t marked Git. The first: \(first)"
+        }
         // Keep the user where they were when rescanning the same root.
         let wasAt = current?.path
         root = tree
@@ -98,21 +110,44 @@ final class AppModel {
         guard let current else {
             return []
         }
-        let key = LayoutKey(size: size, node: ObjectIdentifier(current), version: treeVersion)
+        let key = LayoutKey(
+            size: size, node: ObjectIdentifier(current), version: treeVersion,
+            revealSystem: revealSystem)
         if let cache = layoutCache, cache.key == key {
             return cache.tiles
         }
-        let tiles = layout(current, in: CGRect(origin: .zero, size: size), options: LayoutOptions())
+        var options = LayoutOptions()
+        options.revealSystem = revealSystem
+        let tiles = layout(current, in: CGRect(origin: .zero, size: size), options: options)
         layoutCache = (key, tiles)
         return tiles
     }
 
+    func canOpen(_ node: Node) -> Bool {
+        node.isDir && !node.children.isEmpty
+            && !node.hidesContents(revealingSystem: revealSystem)
+    }
+
     func open(_ node: Node) {
-        guard node.isDir, !node.children.isEmpty else {
+        guard canOpen(node) else {
             return
         }
         current = node
         selected = nil
+        hovered = nil
+    }
+
+    /// Hiding System folders again while inside one steps out of it.
+    private func leaveHiddenFolders() {
+        guard let current,
+            let outermost = current.ancestry.first(where: {
+                $0.hidesContents(revealingSystem: revealSystem)
+            })
+        else {
+            return
+        }
+        self.current = outermost.parent ?? root
+        selected = .node(outermost)
         hovered = nil
     }
 

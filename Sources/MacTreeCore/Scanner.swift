@@ -14,14 +14,21 @@ public final class ScanProgress: Sendable {
 /// Walks a directory tree with `getattrlistbulk`, which returns names, types
 /// and sizes for a whole directory per syscall instead of a `stat` per entry.
 public enum Scanner {
+    public struct Result: Sendable {
+        public let root: Node
+        /// Repositories git could not list; their files show as untracked.
+        public let gitFailures: [String]
+    }
+
     /// Scan everything under `path` on its volume: aggregated, sorted and
     /// classified. Blocks the calling thread; the walk itself is parallel.
-    public static func scan(_ path: String, progress: ScanProgress) -> Node {
+    public static func scan(_ path: String, progress: ScanProgress) -> Result {
         let root = Node(name: path, isDir: true)
         walk(root, path: path, progress: progress)
         root.aggregate()
+        let gitFailures = markTracked(root)
         classify(root)
-        return root
+        return Result(root: root, gitFailures: gitFailures)
     }
 
     /// Fill `dir`'s subtree from disk, without aggregating it.

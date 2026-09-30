@@ -1,7 +1,8 @@
 import Darwin
 
-// What a directory is, for colour: space that can be had back, git, the OS,
-// or anything else. Reclaimable wins: a cache inside the system is a cache.
+// What a node is, for colour: space that can be had back, tracked by git
+// (so also in the cloud), the OS's or tools' own, or anything else.
+// Reclaimable wins: a cache inside the system is a cache.
 
 public enum Kind: CaseIterable, Sendable {
     case reclaimable, git, system, other
@@ -69,6 +70,9 @@ public func reclaim(
     // macOS's per-user temporary and cache folders live in /private/var/folders.
     case "folders" where parentName == "var":
         return .temporary
+    // Not `.git/logs`: those are git's reflogs, history rather than logs.
+    case "logs" where parentName == ".git":
+        return nil
     case "log", "logs", "diagnosticreports":
         return .logs
     default:
@@ -79,31 +83,37 @@ public func reclaim(
 /// What the OS owns at the top of a volume.
 private let systemNames: Set<String> = [
     "System", "Library", "private", "usr", "bin", "sbin", "cores", "opt",
-    ".Spotlight-V100", ".fseventsd", ".DocumentRevisions-V100", ".MobileBackups",
 ]
 
-/// Top-down; a node inherits its parent's kind unless its own name says more.
+/// Top-down; a node inherits its parent's kind unless it says more itself.
+/// Needs `tracked` marked first.
 public func classify(_ root: Node) {
     root.kind = .other
     root.reclaim = nil
     classifyChildren(of: root, kind: .other, reclaim: nil, volumeRoot: isVolumeRoot(root.path))
+    markHoldsReclaimable(root)
 }
 
 private func classifyChildren(of node: Node, kind: Kind, reclaim: Reclaim?, volumeRoot: Bool) {
     let names = Set(node.children.map(\.name))
     for child in node.children {
         var childReclaim = reclaim
-        var childKind = kind
         if child.isDir {
             childReclaim = reclaim ?? MacTreeCore.reclaim(
                 ofName: child.name, parentName: node.displayName, hasSibling: names.contains)
-            if childReclaim != nil {
-                childKind = .reclaimable
-            } else if child.name == ".git" || isGitStore(child) {
-                childKind = .git
-            } else if volumeRoot && systemNames.contains(child.name) {
-                childKind = .system
-            }
+        }
+        let childKind: Kind
+        if childReclaim != nil {
+            childKind = .reclaimable
+        } else if child.tracked {
+            // Before System: a repository's `.github` is its own, not the OS's.
+            childKind = .git
+        } else if child.isDir
+            && (child.name.hasPrefix(".") || volumeRoot && systemNames.contains(child.name))
+        {
+            childKind = .system
+        } else {
+            childKind = kind == .git ? .other : kind
         }
         child.kind = childKind
         child.reclaim = childReclaim
@@ -111,13 +121,22 @@ private func classifyChildren(of node: Node, kind: Kind, reclaim: Reclaim?, volu
     }
 }
 
-/// A git object store by its shape, whatever it is called.
-func isGitStore(_ node: Node) -> Bool {
-    guard node.isDir else {
-        return false
+@discardableResult
+private func markHoldsReclaimable(_ node: Node) -> Bool {
+    var holds = node.kind == .reclaimable
+    for child in node.children where markHoldsReclaimable(child) {
+        holds = true
     }
-    let has = { (name: String) in node.children.contains { $0.name == name } }
-    return has("objects") && has("refs") && has("HEAD")
+    node.holdsReclaimable = holds
+    return holds
+}
+
+extension Node {
+    /// A System folder keeps its contents to itself, unless revealed or
+    /// holding something reclaimable: there is nothing else to get back there.
+    public func hidesContents(revealingSystem: Bool) -> Bool {
+        kind == .system && !holdsReclaimable && !revealingSystem
+    }
 }
 
 /// Whether `path` is where a volume is mounted.
