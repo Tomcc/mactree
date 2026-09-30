@@ -26,12 +26,9 @@ final class AppModel {
     private(set) var treeVersion = 0
     private(set) var emptyingTrash = false
     var confirmingEmptyTrash = false
-    /// Show inside System folders; off, they are single tiles.
-    var revealSystem = false {
-        didSet {
-            leaveHiddenFolders()
-        }
-    }
+    /// Show inside System folders; off, they are single tiles. Only the
+    /// drawing changes: hiding again while inside one stays there.
+    var revealSystem = false
     var showingComputer = false
     var error: String?
 
@@ -127,9 +124,14 @@ final class AppModel {
         return tiles
     }
 
+    /// Going back up to where you came from always works, even into a
+    /// folder that is hidden now.
     func canOpen(_ node: Node) -> Bool {
-        node.isDir && !node.children.isEmpty
-            && !node.hidesContents(revealingSystem: revealSystem)
+        guard node.isDir, !node.children.isEmpty else {
+            return false
+        }
+        return !node.hidesContents(revealingSystem: revealSystem)
+            || current?.isDescendant(of: node) == true
     }
 
     func open(_ node: Node) {
@@ -138,20 +140,6 @@ final class AppModel {
         }
         current = node
         selected = nil
-        hovered = nil
-    }
-
-    /// Hiding System folders again while inside one steps out of it.
-    private func leaveHiddenFolders() {
-        guard let current,
-            let outermost = current.ancestry.first(where: {
-                $0.hidesContents(revealingSystem: revealSystem)
-            })
-        else {
-            return
-        }
-        self.current = outermost.parent ?? root
-        selected = .node(outermost)
         hovered = nil
     }
 

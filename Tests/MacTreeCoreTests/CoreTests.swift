@@ -399,3 +399,23 @@ private func isVolumeRootPath(_ info: statfs) -> String {
         String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
     }
 }
+
+@Test func insideAHiddenFolderItsChildrenAreBlocks() {
+    let frameworks = Node(name: "/Library/Frameworks", isDir: true)
+    let mono = Node(name: "Mono.framework", isDir: true)
+    mono.adopt(Node(name: "lib", isDir: false, bytes: 1000))
+    let tools = Node(name: "Tools", isDir: true)
+    tools.adopt(Node(name: "a", isDir: false, bytes: 600))
+    tools.adopt(Node(name: "b", isDir: false, bytes: 400))
+    frameworks.adopt(mono)
+    frameworks.adopt(tools)
+    frameworks.aggregate()
+    for node in [frameworks, mono, tools] {
+        node.kind = .system
+    }
+    #expect(frameworks.hidesContents(revealingSystem: false))
+    let tiles = layout(frameworks, in: CGRect(x: 0, y: 0, width: 1200, height: 600), options: LayoutOptions())
+    let shown = tiles.compactMap { tile in tile.node.map { ($0.name, tile.isBlock) } }
+    #expect(shown.map(\.0).sorted() == ["Mono.framework", "Tools"], "the drawn folder shows its children")
+    #expect(shown.allSatisfy { $0.1 }, "which are blocks while System is hidden")
+}
