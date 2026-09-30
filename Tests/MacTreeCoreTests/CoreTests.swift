@@ -174,13 +174,13 @@ func child(_ node: Node, _ names: String...) -> Node {
     var options = LayoutOptions()
     options.maxChildren = 4
     let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 800, height: 500), options: options)
-    let others = tiles.compactMap { tile -> Int? in
-        if case .others(_, let count) = tile.content {
-            return count
+    let others = tiles.compactMap { tile -> UInt64? in
+        if case .others(_, let bytes) = tile.content {
+            return bytes
         }
         return nil
     }
-    #expect(others == [6])
+    #expect(others == [21], "the tail's bytes: 6 + 5 + 4 + 3 + 2 + 1")
 }
 
 @Test func dustMergesIntoOneTileBesideABigChild() {

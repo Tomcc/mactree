@@ -8,7 +8,7 @@ public struct Tile: Sendable {
     public enum Content: Sendable {
         case node(Node)
         /// The merged tail of a long child list, so its area still counts.
-        case others(parent: Node, count: Int)
+        case others(parent: Node, bytes: UInt64)
     }
 
     public let content: Content
@@ -28,10 +28,10 @@ public struct Tile: Sendable {
 }
 
 public struct LayoutOptions: Equatable, Sendable {
-    /// Room between siblings for their shadows.
-    public var padding: CGFloat = 2
+    /// The gap between siblings, which is what separates them.
+    public var padding: CGFloat = 1
     /// Wider gaps between top-level directories, so that level reads first.
-    public var paddingOuter: CGFloat = 4
+    public var paddingOuter: CGFloat = 3
     /// Every tile fits a label; children that would be smaller are merged.
     public var minTile: CGFloat = 30
     public var maxChildren = 96
@@ -73,8 +73,8 @@ private func placeChildren(
     }
     let tail = ranked.count - kept.count
     if tail > 0 {
-        let bytes = ranked.dropFirst(kept.count).reduce(0) { $0 + Double($1.bytes) }
-        items.append((.others(parent: node, count: tail), bytes))
+        let bytes = ranked.dropFirst(kept.count).reduce(0) { $0 + $1.bytes }
+        items.append((.others(parent: node, bytes: bytes), Double(bytes)))
     }
     guard !items.isEmpty else {
         return

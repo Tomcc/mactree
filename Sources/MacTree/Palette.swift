@@ -2,8 +2,9 @@ import AppKit
 import MacTreeCore
 import SwiftUI
 
-// Fills are system colours mixed lightly into the window background, so they
-// follow light and dark mode and black or white text stays readable on them.
+// Fills are system colours mixed lightly into the text background (white, or
+// near-black in dark mode), so text reads on them; the gaps between tiles show
+// the window background, which always sits between the two.
 
 enum Palette {
     static func color(_ kind: Kind) -> Color {
@@ -16,11 +17,12 @@ enum Palette {
     }
 
     static let background = Color(nsColor: .windowBackgroundColor)
+    private static let surface = Color(nsColor: .textBackgroundColor)
 
     /// A solid fill, so nested tiles never blend into each other's hue.
     /// Deeper tiles carry a little more colour, so nesting reads without borders.
     static func fill(_ kind: Kind, depth: Int, in environment: EnvironmentValues) -> Color {
-        let base = background.resolve(in: environment)
+        let base = surface.resolve(in: environment)
         let tint = color(kind).resolve(in: environment)
         // The same tint reads stronger on a dark background.
         let scale: Float = environment.colorScheme == .dark ? 0.7 : 1
