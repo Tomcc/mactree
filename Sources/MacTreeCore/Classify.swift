@@ -169,7 +169,9 @@ func dominantChildKind(_ node: Node) -> Kind? {
     var node = node
     for _ in 0..<3 {
         for child in node.children where child.isDir {
-            if let found = kind(ofName: child.name) ?? (isGitStore(child) ? .git : nil) {
+            // A neutral name (`Library`) says nothing about what fills it.
+            let found = kind(ofName: child.name) ?? (isGitStore(child) ? .git : nil)
+            if let found, found != .other {
                 return found
             }
         }

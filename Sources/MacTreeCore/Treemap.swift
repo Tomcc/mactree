@@ -9,6 +9,8 @@ public struct Tile: Sendable {
         case node(Node)
         /// The merged tail of a long child list, so its area still counts.
         case others(parent: Node, count: Int)
+        /// The volume's free space, drawn beside the top level for scale.
+        case free(bytes: UInt64)
     }
 
     public let content: Content
@@ -28,76 +30,86 @@ public struct Tile: Sendable {
 }
 
 public struct LayoutOptions: Equatable, Sendable {
-    public var maxDepth = 4
     public var padding: CGFloat = 1
     /// Wider gaps between top-level directories, so that level reads first.
     public var paddingOuter: CGFloat = 3
     /// Smaller tiles cannot be read or hit, so they are dropped.
     public var minTile: CGFloat = 5
     public var maxChildren = 96
-    public var header: CGFloat = 20
+    public var header: CGFloat = 18
     public var headerInner: CGFloat = 15
+    /// A directory is subdivided only if the body under its band is at least
+    /// this big: depth follows the room on screen, not a fixed level count.
+    public var minBody = CGSize(width: 40, height: 24)
 
     public init() {}
 }
 
 /// Parents come before their children, so painting in order and hit-testing
-/// in reverse both do the right thing.
-public func layout(_ root: Node, in area: CGRect, options: LayoutOptions) -> [Tile] {
+/// in reverse both do the right thing. `free` adds a free-space tile to the
+/// top level.
+public func layout(
+    _ root: Node, in area: CGRect, free: UInt64? = nil, options: LayoutOptions
+) -> [Tile] {
     var tiles: [Tile] = []
-    placeChildren(of: root, in: area, depth: 0, options: options, into: &tiles)
+    placeChildren(of: root, in: area, depth: 0, free: free, options: options, into: &tiles)
     return tiles
 }
 
 private func placeChildren(
-    of node: Node, in area: CGRect, depth: Int, options: LayoutOptions,
+    of node: Node, in area: CGRect, depth: Int, free: UInt64?, options: LayoutOptions,
     into tiles: inout [Tile]
 ) {
     guard area.width > 0, area.height > 0 else {
         return
     }
     let ranked = node.children.filter { $0.bytes > 0 }
-    guard !ranked.isEmpty else {
-        return
-    }
     let kept = ranked.prefix(options.maxChildren)
-    var values = kept.map { Double($0.bytes) }
+    var items: [(content: Tile.Content, value: Double)] = kept.map {
+        (.node($0), Double($0.bytes))
+    }
     let tail = ranked.count - kept.count
     if tail > 0 {
-        values.append(ranked.dropFirst(kept.count).reduce(0) { $0 + Double($1.bytes) })
+        let bytes = ranked.dropFirst(kept.count).reduce(0) { $0 + Double($1.bytes) }
+        items.append((.others(parent: node, count: tail), bytes))
     }
+    if let free, free > 0 {
+        items.append((.free(bytes: free), Double(free)))
+    }
+    guard !items.isEmpty else {
+        return
+    }
+    items.sort { $0.value > $1.value }
 
     let padding = depth == 0 ? options.paddingOuter : options.padding
-    for (slot, raw) in squarify(values, in: area).enumerated() {
+    for (item, raw) in zip(items, squarify(items.map(\.value), in: area)) {
         let rect = raw.insetBy(dx: padding, dy: padding)
         guard rect.width >= options.minTile, rect.height >= options.minTile else {
             continue
         }
-        guard slot < kept.count else {
-            tiles.append(Tile(
-                content: .others(parent: node, count: tail), rect: rect, depth: depth,
-                header: nil))
+        guard case .node(let child) = item.content, child.isDir else {
+            tiles.append(Tile(content: item.content, rect: rect, depth: depth, header: nil))
             continue
         }
-        let child = kept[kept.startIndex + slot]
-        let subdividable = child.isDir && depth + 1 < options.maxDepth
-        // No room for a band: the tile stays whole. A name painted over its
-        // own children is worse than one level less of detail.
-        let header = subdividable ? headerBand(rect, depth: depth, options: options) : nil
-        tiles.append(Tile(content: .node(child), rect: rect, depth: depth, header: header))
+        // No room for a band and a readable body: the tile stays whole.
+        let header = headerBand(rect, depth: depth, options: options)
+        tiles.append(Tile(content: item.content, rect: rect, depth: depth, header: header))
         if let header {
             let body = CGRect(
                 x: rect.minX, y: header.maxY, width: rect.width,
                 height: rect.maxY - header.maxY)
             placeChildren(
-                of: child, in: body, depth: depth + 1, options: options, into: &tiles)
+                of: child, in: body, depth: depth + 1, free: nil, options: options,
+                into: &tiles)
         }
     }
 }
 
 private func headerBand(_ rect: CGRect, depth: Int, options: LayoutOptions) -> CGRect? {
     let height = depth == 0 ? options.header : options.headerInner
-    guard rect.width >= 44, rect.height - height >= options.minTile * 3 else {
+    guard rect.width >= options.minBody.width,
+        rect.height - height >= options.minBody.height
+    else {
         return nil
     }
     return CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: height)

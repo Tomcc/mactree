@@ -13,7 +13,8 @@ struct TreemapView: View {
         GeometryReader { geometry in
             let tiles = model.tiles(for: geometry.size)
             ZStack {
-                MosaicCanvas(tiles: tiles, version: model.treeVersion).equatable()
+                MosaicCanvas(tiles: tiles, worth: model.worth, version: model.treeVersion)
+                    .equatable()
                 RingsCanvas(tiles: tiles, hovered: model.hovered, selected: model.selected)
             }
             .contentShape(Rectangle())
@@ -26,12 +27,10 @@ struct TreemapView: View {
                 }
             }
             .onTapGesture(coordinateSpace: .local) { point in
-                guard let node = hit(tiles, at: point)?.node else {
-                    return
-                }
+                let node = hit(tiles, at: point)?.node
                 // Double-click opens; a tap gesture of count 2 would delay
                 // every single click while it waits.
-                if NSApp.currentEvent?.clickCount == 2 {
+                if let node, NSApp.currentEvent?.clickCount == 2 {
                     model.open(node)
                 } else {
                     model.selected = node
@@ -43,7 +42,7 @@ struct TreemapView: View {
                 }
             }
         }
-        .background(Theme.inset.color)
+        .background(Palette.background)
     }
 }
 
@@ -52,19 +51,19 @@ struct NodeMenu: View {
     let node: Node
 
     var body: some View {
-        Text(node.displayName)
         if node.isDir {
             Button("Open") { model.open(node) }
         }
-        Button("Reveal in Finder") { model.revealInFinder(node) }
+        Button("Show in Finder") { model.revealInFinder(node) }
         Divider()
-        Button("Move to Trash…") { model.pendingTrash = node }
-            .disabled(model.trashRefusal(node) != nil)
+        Button("Move to Trash") { model.moveToTrash(node) }
+            .disabled(!model.canTrash(node))
     }
 }
 
 private struct MosaicCanvas: View, Equatable {
     nonisolated let tiles: [Tile]
+    nonisolated let worth: Set<ObjectIdentifier>
     /// Tiles hold references, so equality needs the tree's version too.
     nonisolated let version: Int
 
@@ -76,79 +75,66 @@ private struct MosaicCanvas: View, Equatable {
     var body: some View {
         Canvas { context, _ in
             paintFills(&context)
-            paintHatch(&context)
-            paintMarks(&context)
+            paintFree(&context)
+            paintOutlines(&context)
             for tile in tiles {
                 paintLabel(&context, tile)
             }
         }
     }
 
-    /// One path per depth and colour: a handful of fills instead of thousands.
+    /// One path per depth and kind: a handful of fills instead of thousands.
     /// Depth order matters, since children paint over their parent's body.
     private func paintFills(_ context: inout GraphicsContext) {
-        var layers: [Int: [RGB: Path]] = [:]
-        var strips: [RGB: Path] = [:]
+        var layers: [Int: [Kind: Path]] = [:]
         for tile in tiles {
-            let kind: Kind =
-                switch tile.content {
-                case .node(let node): node.kind
-                case .others(let parent, _): parent.kind
-                }
-            let fill = Palette.fill(kind, depth: tile.depth)
-            layers[tile.depth, default: [:]][fill, default: Path()].addRect(tile.rect)
-            // A top-level directory carries a strip of its colour, so the
-            // first level of structure reads before any detail.
-            if tile.depth == 0, tile.node != nil {
-                let strip = CGRect(
-                    x: tile.rect.minX, y: tile.rect.minY, width: tile.rect.width,
-                    height: min(2, tile.rect.height))
-                strips[Palette.accent(kind), default: Path()].addRect(strip)
+            let kind: Kind
+            switch tile.content {
+            case .node(let node): kind = node.kind
+            case .others(let parent, _): kind = parent.kind
+            case .free: continue
             }
+            layers[tile.depth, default: [:]][kind, default: Path()].addRect(tile.rect)
         }
         for depth in layers.keys.sorted() {
-            for (color, path) in layers[depth] ?? [:] {
-                context.fill(path, with: .color(color.color))
+            for (kind, path) in layers[depth] ?? [:] {
+                let fill = Palette.fill(kind, depth: depth, in: context.environment)
+                context.fill(path, with: .color(fill))
             }
         }
-        for (color, path) in strips {
-            context.fill(path, with: .color(color.color))
+    }
+
+    /// Free space is an empty tile, outlined like a drop target.
+    private func paintFree(_ context: inout GraphicsContext) {
+        for tile in tiles {
+            if case .free = tile.content {
+                context.stroke(
+                    Path(roundedRect: tile.rect.insetBy(dx: 1, dy: 1), cornerRadius: 4),
+                    with: .color(.secondary),
+                    style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            }
         }
     }
 
-    /// Reclaimable space is hatched over any hue. Everything inside a
-    /// reclaimable directory is too, so one clipped pass covers it all.
-    private func paintHatch(_ context: inout GraphicsContext) {
-        var region = Path()
-        for tile in tiles where tile.node?.reclaim != nil {
-            region.addRect(tile.rect)
-        }
-        guard !region.isEmpty else {
-            return
-        }
-        var hatch = context
-        hatch.clip(to: region)
-        let bounds = region.boundingRect
-        var lines = Path()
-        var x = bounds.minX - bounds.height
-        while x < bounds.maxX {
-            lines.move(to: CGPoint(x: x, y: bounds.maxY))
-            lines.addLine(to: CGPoint(x: x + bounds.height, y: bounds.minY))
-            x += 6
-        }
-        hatch.stroke(lines, with: .color(Palette.hatch), lineWidth: 1)
-    }
-
-    /// A small amber corner: part of this could not be read.
-    private func paintMarks(_ context: inout GraphicsContext) {
-        var marks = Path()
-        for tile in tiles where tile.rect.width > 12 && tile.rect.height > 12 {
-            if let node = tile.node, node.unreadableHere {
-                marks.addRect(
+    /// Green: space that can be had back. A small orange corner: part of it
+    /// could not be read.
+    private func paintOutlines(_ context: inout GraphicsContext) {
+        var worthPath = Path()
+        var unreadable = Path()
+        for tile in tiles {
+            guard let node = tile.node else {
+                continue
+            }
+            if worth.contains(ObjectIdentifier(node)) {
+                worthPath.addRect(tile.rect.insetBy(dx: 1, dy: 1))
+            }
+            if node.unreadableHere, tile.rect.width > 12, tile.rect.height > 12 {
+                unreadable.addRect(
                     CGRect(x: tile.rect.maxX - 6, y: tile.rect.minY + 2, width: 4, height: 4))
             }
         }
-        context.fill(marks, with: .color(Theme.warning.color))
+        context.stroke(worthPath, with: .color(Palette.worth), lineWidth: 2)
+        context.fill(unreadable, with: .color(Color(nsColor: .systemOrange)))
     }
 
     private func paintLabel(_ context: inout GraphicsContext, _ tile: Tile) {
@@ -166,19 +152,21 @@ private struct MosaicCanvas: View, Equatable {
         case .others(_, let count):
             text = "\(count) more"
             size = ""
+        case .free(let bytes):
+            text = "Free space"
+            size = formatBytes(bytes)
         }
         let bold = tile.depth == 0 && tile.header != nil
         let name = context.resolve(
-            Text(text).font(.system(size: 12, weight: bold ? .semibold : .regular))
-                .foregroundStyle(Theme.bright.color.opacity(tile.depth == 0 ? 1 : 0.88)))
+            Text(text).font(.system(size: 11, weight: bold ? .semibold : .regular))
+                .foregroundStyle(.primary))
         let sizeText = context.resolve(
-            Text(size).font(.system(size: 11))
-                .foregroundStyle(Theme.bright.color.opacity(0.45)))
+            Text(size).font(.system(size: 11)).foregroundStyle(.secondary))
 
         var label = context
         label.clip(to: Path(owned))
         let padding: CGFloat = 5
-        let lineHeight: CGFloat = 16
+        let lineHeight: CGFloat = 14
         let origin = CGPoint(
             x: owned.minX + padding, y: owned.minY + (tile.header == nil ? 3 : 1))
         label.draw(name, at: origin, anchor: .topLeading)
@@ -187,12 +175,11 @@ private struct MosaicCanvas: View, Equatable {
         }
         let nameWidth = name.measure(in: owned.size).width
         let sizeWidth = sizeText.measure(in: owned.size).width
-        let sizeTop = origin.y + 1
         if tile.header != nil && tile.depth == 0 {
             // First-level sizes sit at the far end, where they read as a column.
             let x = owned.maxX - padding - sizeWidth
             if x > origin.x + nameWidth + padding {
-                label.draw(sizeText, at: CGPoint(x: x, y: sizeTop), anchor: .topLeading)
+                label.draw(sizeText, at: CGPoint(x: x, y: origin.y), anchor: .topLeading)
             }
         } else if tile.header == nil && owned.height >= lineHeight * 2 + 4 {
             label.draw(
@@ -200,7 +187,7 @@ private struct MosaicCanvas: View, Equatable {
                 anchor: .topLeading)
         } else if owned.width - padding * 2 - nameWidth > sizeWidth + 8 {
             label.draw(
-                sizeText, at: CGPoint(x: origin.x + nameWidth + 7, y: sizeTop),
+                sizeText, at: CGPoint(x: origin.x + nameWidth + 6, y: origin.y),
                 anchor: .topLeading)
         }
     }
@@ -215,12 +202,12 @@ private struct RingsCanvas: View {
         Canvas { context, _ in
             if let hovered, hovered !== selected, let tile = tile(of: hovered) {
                 context.stroke(
-                    Path(tile.rect.insetBy(dx: 0.5, dy: 0.5)), with: .color(Palette.hover),
-                    lineWidth: 1)
+                    Path(tile.rect.insetBy(dx: 0.5, dy: 0.5)),
+                    with: .color(.primary.opacity(0.5)), lineWidth: 1)
             }
             if let selected, let tile = tile(of: selected) {
                 context.stroke(
-                    Path(tile.rect.insetBy(dx: 1, dy: 1)), with: .color(Theme.warning.color),
+                    Path(tile.rect.insetBy(dx: 1, dy: 1)), with: .color(.accentColor),
                     lineWidth: 2)
             }
         }

@@ -1,8 +1,8 @@
 import Foundation
 
-/// "Worth a look": the largest reclaimable directories. Topmost only, so the
-/// total is space that really exists once.
-public func worthALook(_ root: Node, limit: Int) -> [Node] {
+/// "Worth a look": reclaimable directories big enough to matter. Topmost
+/// only, so the total is space that really exists once.
+public func worthALook(_ root: Node) -> [Node] {
     var found: [Node] = []
     func visit(_ node: Node) {
         guard node.isDir, node.bytes >= minWorthBytes else {
@@ -15,7 +15,7 @@ public func worthALook(_ root: Node, limit: Int) -> [Node] {
         node.children.forEach(visit)
     }
     root.children.forEach(visit)
-    return Array(found.sorted { $0.bytes > $1.bytes }.prefix(limit))
+    return found
 }
 
 /// Smaller than this is not worth a line.

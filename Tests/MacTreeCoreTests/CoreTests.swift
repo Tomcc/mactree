@@ -108,6 +108,8 @@ func child(_ node: Node, _ names: String...) -> Node {
     try tree.file("bare/HEAD", bytes: 1)
     try tree.file("bare/refs/r", bytes: 1)
     try tree.file("bare/objects/p", bytes: 1)
+    try tree.file("game/Library/big", bytes: 90_000)
+    try tree.file("game/.git/objects/x", bytes: 10)
     let root = Scanner.scan(tree.root, progress: ScanProgress())
 
     #expect(child(root, "src").kind == .code)
@@ -117,7 +119,9 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(child(root, "jsy", "target").reclaim == nil)
     #expect(child(root, "world").kind == .git)
     #expect(child(root, "bare").kind == .git)
-    #expect(worthALook(root, limit: 5).isEmpty, "all below the size floor")
+    #expect(child(root, "game", "Library").kind == .other)
+    #expect(child(root, "game").kind == .git, "the neutral Library is skipped")
+    #expect(worthALook(root).isEmpty, "all below the size floor")
 }
 
 @Test func squarifyFillsTheAreaWithSaneAspects() {

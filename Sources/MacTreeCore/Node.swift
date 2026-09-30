@@ -4,7 +4,8 @@ import Foundation
 /// children by `recompute()`, never tracked by hand.
 public final class Node: @unchecked Sendable {
     /// The last path component; the scanned root holds its full path.
-    public let name: String
+    /// Mutable because the Trash may rename what is moved into it.
+    public var name: String
     public let isDir: Bool
     /// Unowned rather than weak: a weak ref costs a side table per node, and
     /// a scan can hold millions. Parents always outlive their children.

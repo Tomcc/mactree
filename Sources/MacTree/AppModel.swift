@@ -6,7 +6,7 @@ import Observation
 final class AppModel {
     enum Phase {
         case idle
-        case scanning(path: String, started: Date)
+        case scanning(path: String)
         case ready
     }
 
@@ -18,13 +18,13 @@ final class AppModel {
     private(set) var current: Node?
     var selected: Node?
     var hovered: Node?
-    private(set) var depth = 4
     private(set) var disk: DiskSpace?
-    private(set) var worth: [Node] = []
-    private(set) var lastScan: (entries: Int, seconds: Double)?
+    /// Reclaimable directories, outlined in the mosaic.
+    private(set) var worth: Set<ObjectIdentifier> = []
     /// Bumped whenever the tree changes shape, to invalidate the layout.
     private(set) var treeVersion = 0
-    var pendingTrash: Node?
+    private(set) var emptyingTrash = false
+    var confirmingEmptyTrash = false
     var error: String?
 
     @ObservationIgnored private var layoutCache: (key: LayoutKey, tiles: [Tile])?
@@ -32,14 +32,13 @@ final class AppModel {
     private struct LayoutKey: Equatable {
         let size: CGSize
         let node: ObjectIdentifier
-        let depth: Int
         let version: Int
+        let free: UInt64?
     }
 
     func scan(_ path: String) {
         let progress = ScanProgress()
-        let started = Date()
-        phase = .scanning(path: path, started: started)
+        phase = .scanning(path: path)
         scannedEntries = 0
         Task {
             let poll = Task {
@@ -50,28 +49,37 @@ final class AppModel {
             }
             let tree = await Task.detached { Scanner.scan(path, progress: progress) }.value
             poll.cancel()
-            finishScan(tree, entries: progress.count, seconds: Date().timeIntervalSince(started))
+            finishScan(tree)
         }
     }
 
     /// Synchronous, for the snapshot tool: blocking is fine in a CLI.
     func scanBlocking(_ path: String) {
-        let progress = ScanProgress()
-        let started = Date()
-        let tree = Scanner.scan(path, progress: progress)
-        finishScan(tree, entries: progress.count, seconds: Date().timeIntervalSince(started))
+        finishScan(Scanner.scan(path, progress: ScanProgress()))
     }
 
-    private func finishScan(_ tree: Node, entries: Int, seconds: Double) {
+    private func finishScan(_ tree: Node) {
         // Keep the user where they were when rescanning the same root.
         let wasAt = current?.path
         root = tree
         current = wasAt.flatMap { find($0, in: tree) } ?? tree
-        selected = current
+        selected = nil
         hovered = nil
-        lastScan = (entries, seconds)
         phase = .ready
         treeChanged()
+    }
+
+    /// Free space changes behind our back (Finder, other apps, APFS reclaiming
+    /// purgeable space late), and reading it is one cheap call.
+    func watchFreeSpace() async {
+        while !Task.isCancelled {
+            if let root, let fresh = try? DiskSpace(for: root.path),
+                fresh.available != disk?.available
+            {
+                disk = fresh
+            }
+            try? await Task.sleep(for: .seconds(3))
+        }
     }
 
     func rescan() {
@@ -83,7 +91,7 @@ final class AppModel {
     private func treeChanged() {
         treeVersion += 1
         if let root {
-            worth = worthALook(root, limit: 6)
+            worth = Set(worthALook(root).map(ObjectIdentifier.init))
             disk = try? DiskSpace(for: root.path)
         }
     }
@@ -92,14 +100,16 @@ final class AppModel {
         guard let current else {
             return []
         }
+        // Free space only makes sense beside the whole scan, not a part of it.
+        let free = current === root ? disk?.available : nil
         let key = LayoutKey(
-            size: size, node: ObjectIdentifier(current), depth: depth, version: treeVersion)
+            size: size, node: ObjectIdentifier(current), version: treeVersion, free: free)
         if let cache = layoutCache, cache.key == key {
             return cache.tiles
         }
-        var options = LayoutOptions()
-        options.maxDepth = depth
-        let tiles = layout(current, in: CGRect(origin: .zero, size: size), options: options)
+        let tiles = layout(
+            current, in: CGRect(origin: .zero, size: size), free: free,
+            options: LayoutOptions())
         layoutCache = (key, tiles)
         return tiles
     }
@@ -109,7 +119,7 @@ final class AppModel {
             return
         }
         current = node
-        selected = node
+        selected = nil
         hovered = nil
     }
 
@@ -117,43 +127,31 @@ final class AppModel {
         guard let parent = current?.parent else {
             return
         }
-        let from = current
+        selected = current
         current = parent
-        selected = from
-    }
-
-    func changeDepth(by delta: Int) {
-        depth = min(max(depth + delta, 1), 8)
     }
 
     func revealInFinder(_ node: Node) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])
     }
 
-    /// Why a node may not be trashed, if it may not.
-    func trashRefusal(_ node: Node) -> String? {
-        if node === root {
-            return "the scanned folder itself"
-        }
-        if node.path == NSHomeDirectory() {
-            return "your home folder"
-        }
-        if node.isMountPoint {
-            return "a mount point"
-        }
-        return nil
+    func canTrash(_ node: Node) -> Bool {
+        node !== root && node.path != NSHomeDirectory() && !node.isMountPoint
     }
 
-    func trash(_ node: Node) {
-        pendingTrash = nil
-        guard trashRefusal(node) == nil, let parent = node.parent else {
+    /// Recoverable, so no confirmation, like Finder.
+    func moveToTrash(_ node: Node) {
+        guard canTrash(node), let parent = node.parent else {
             return
         }
+        let trashed: NSURL?
         do {
+            var result: NSURL?
             try FileManager.default.trashItem(
-                at: URL(fileURLWithPath: node.path), resultingItemURL: nil)
+                at: URL(fileURLWithPath: node.path), resultingItemURL: &result)
+            trashed = result
         } catch {
-            self.error = "Could not move \(node.displayName) to the Trash: "
+            self.error = "Could not move \u{201C}\(node.displayName)\u{201D} to the Trash: "
                 + error.localizedDescription
             return
         }
@@ -161,13 +159,61 @@ final class AppModel {
             self.current = parent
         }
         if selected?.isDescendant(of: node) == true {
-            selected = parent
+            selected = nil
         }
         hovered = nil
         parent.children.removeAll { $0 === node }
         parent.recompute()
         parent.propagateUp()
+        // Same volume: the bytes are still used, now by the Trash.
+        if let trash = trashNode, let name = trashed?.lastPathComponent {
+            node.name = name
+            trash.adopt(node)
+            trash.recompute()
+            trash.propagateUp()
+        }
         treeChanged()
+    }
+
+    /// `~/.Trash` in the scanned tree, if the scan reached it.
+    var trashNode: Node? {
+        root.flatMap { find(trashPath, in: $0) }.flatMap { $0.path == trashPath ? $0 : nil }
+    }
+
+    private var trashPath: String { NSHomeDirectory() + "/.Trash" }
+
+    /// Through Finder, which knows every volume's Trash and needs no Full
+    /// Disk Access; the first time, macOS asks to let mactree control Finder.
+    func emptyTrash() {
+        emptyingTrash = true
+        Task {
+            let result = await Task.detached { () -> (Int32, String) in
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = ["-e", "tell application \"Finder\" to empty trash"]
+                let errors = Pipe()
+                process.standardError = errors
+                do {
+                    try process.run()
+                } catch {
+                    return (-1, error.localizedDescription)
+                }
+                let message = errors.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                return (process.terminationStatus, String(decoding: message, as: UTF8.self))
+            }.value
+            emptyingTrash = false
+            guard result.0 == 0 else {
+                error = "Could not empty the Trash: \(result.1)"
+                return
+            }
+            if let trash = trashNode {
+                trash.children.removeAll()
+                trash.recompute()
+                trash.propagateUp()
+            }
+            treeChanged()
+        }
     }
 
     /// Walks our own tree by name, so no path string is parsed from outside.

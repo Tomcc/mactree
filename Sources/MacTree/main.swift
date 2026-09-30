@@ -2,8 +2,8 @@ import AppKit
 import MacTreeCore
 import SwiftUI
 
-// `MacTree --snapshot out.png [path]` scans, renders one frame to a PNG and
-// exits: a way to check the look and the numbers without a screen.
+// `MacTree --snapshot out [path]` scans, renders out-light.png and
+// out-dark.png and exits: a way to check the look without a screen.
 let arguments = CommandLine.arguments
 if let flag = arguments.firstIndex(of: "--snapshot"), flag + 1 < arguments.count {
     let output = arguments[flag + 1]
@@ -19,27 +19,44 @@ struct MacTreeApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
+        // A `Window` scene never opened when launched from a shell.
         WindowGroup("mactree") {
-            ContentView(model: model)
-                .frame(minWidth: 1000, minHeight: 640)
-                .ignoresSafeArea()
-                .focusable()
-                .focusEffectDisabled()
-                .onKeyPress(action: handleKey)
+            ContentView(model: model, chooseFolder: chooseFolder)
+                .frame(minWidth: 900, minHeight: 600)
                 .onAppear {
                     if case .idle = model.phase {
                         model.scan(startPath)
                     }
                 }
         }
-        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 920)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open Folder…") { chooseFolder() }.keyboardShortcut("o")
+                Button("Open Folder…", action: chooseFolder).keyboardShortcut("o")
                 Button("Scan Whole Disk") { model.scan("/System/Volumes/Data") }
-                    .keyboardShortcut("d", modifiers: [.command, .shift])
-                Button("Rescan") { model.rescan() }.keyboardShortcut("r")
+                Divider()
+                Button("Move to Trash") {
+                    if let node = model.selected {
+                        model.moveToTrash(node)
+                    }
+                }
+                .keyboardShortcut(.delete)
+                .disabled(model.selected.map { !model.canTrash($0) } ?? true)
+            }
+            CommandMenu("Go") {
+                Button("Enclosing Folder") { model.up() }
+                    .keyboardShortcut(.upArrow)
+                    .disabled(model.current?.parent == nil)
+                Button("Open Selection") {
+                    if let node = model.selected {
+                        model.open(node)
+                    }
+                }
+                .keyboardShortcut(.downArrow)
+                .disabled(model.selected?.isDir != true)
+            }
+            CommandGroup(after: .toolbar) {
+                Button("Refresh") { model.rescan() }.keyboardShortcut("r")
             }
         }
     }
@@ -50,28 +67,6 @@ struct MacTreeApp: App {
     private var startPath: String {
         UserDefaults.standard.string(forKey: "path").map { ($0 as NSString).standardizingPath }
             ?? NSHomeDirectory()
-    }
-
-    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        switch (press.key, press.modifiers) {
-        case (.return, _):
-            if let node = model.selected {
-                model.open(node)
-            }
-        case (.delete, .command):
-            if let node = model.selected, model.trashRefusal(node) == nil {
-                model.pendingTrash = node
-            }
-        case (.delete, _), (.escape, _):
-            model.up()
-        case ("[", _):
-            model.changeDepth(by: -1)
-        case ("]", _):
-            model.changeDepth(by: 1)
-        default:
-            return .ignored
-        }
-        return .handled
     }
 
     private func chooseFolder() {
@@ -101,25 +96,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 enum Snapshot {
     static func render(path: String, to output: String) -> Int32 {
         let model = AppModel()
+        let started = Date()
         model.scanBlocking(path)
-        guard let root = model.root, let scan = model.lastScan else {
+        guard let root = model.root else {
             return 1
         }
+        let seconds = String(format: "%.2f", Date().timeIntervalSince(started))
         print(
             "scanned \(root.path): \(root.bytes) bytes, \(root.files) files, "
-                + "\(root.dirs) dirs, \(root.unreadable) unreadable, "
-                + "\(scan.entries) entries in \(String(format: "%.2f", scan.seconds)) s")
-        let renderer = ImageRenderer(
-            content: ContentView(model: model).frame(width: 1440, height: 920))
-        renderer.scale = 2
-        guard let image = renderer.cgImage,
-            let destination = CGImageDestinationCreateWithURL(
-                URL(fileURLWithPath: output) as CFURL, "public.png" as CFString, 1, nil)
-        else {
-            print("could not render")
-            return 1
+                + "\(root.dirs) dirs, \(root.unreadable) unreadable in \(seconds) s")
+        for (scheme, suffix) in [(ColorScheme.light, "light"), (.dark, "dark")] {
+            let content = ContentView(model: model, chooseFolder: {})
+                .frame(width: 1440, height: 900)
+                .background(Palette.background)
+                .environment(\.colorScheme, scheme)
+            let renderer = ImageRenderer(content: content)
+            renderer.scale = 2
+            let url = URL(fileURLWithPath: "\(output)-\(suffix).png")
+            guard let image = renderer.cgImage,
+                let destination = CGImageDestinationCreateWithURL(
+                    url as CFURL, "public.png" as CFString, 1, nil)
+            else {
+                print("could not render \(suffix)")
+                return 1
+            }
+            CGImageDestinationAddImage(destination, image, nil)
+            guard CGImageDestinationFinalize(destination) else {
+                return 1
+            }
         }
-        CGImageDestinationAddImage(destination, image, nil)
-        return CGImageDestinationFinalize(destination) ? 0 : 1
+        return 0
     }
 }
