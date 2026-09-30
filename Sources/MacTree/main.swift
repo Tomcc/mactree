@@ -54,7 +54,7 @@ struct MacTreeApp: App {
             CommandMenu("Go") {
                 Button("Enclosing Folder") { model.up() }
                     .keyboardShortcut(.upArrow)
-                    .disabled(model.current?.parent == nil)
+                    .disabled(!model.canGoUp)
                 Button("Open Selection") {
                     if let node = model.selected?.owner {
                         model.open(node)

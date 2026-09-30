@@ -377,3 +377,25 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(names == ["a", "file", "x", "y"], "b and c share a's band")
     #expect(tiles.first { $0.node === a }?.chain.map(\.name) == ["b", "c"])
 }
+
+@Test func enclosingFoldersStartAtTheDisk() throws {
+    let home = enclosingFolders(of: NSHomeDirectory())
+    var info = statfs()
+    #expect(statfs(NSHomeDirectory(), &info) == 0)
+    #expect(home.first?.path == isVolumeRootPath(info), "the disk comes first")
+    #expect(home.last?.name == "Users")
+    for folder in home {
+        #expect(FileManager.default.fileExists(atPath: folder.path), "\(folder.path)")
+    }
+    let disk = try #require(home.first)
+    #expect(enclosingFolders(of: disk.path).isEmpty, "nothing encloses a disk")
+    let temporary = enclosingFolders(of: NSTemporaryDirectory())
+    #expect(temporary.allSatisfy { FileManager.default.fileExists(atPath: $0.path) },
+        "symlinks like /var are resolved")
+}
+
+private func isVolumeRootPath(_ info: statfs) -> String {
+    withUnsafeBytes(of: info.f_mntonname) { raw in
+        String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+    }
+}

@@ -19,7 +19,7 @@ struct ContentView: View {
             isPresented: Binding(
                 get: { model.showingComputer }, set: { model.showingComputer = $0 })
         ) {
-            ComputerView(scan: model.scan, chooseFolder: chooseFolder)
+            ComputerView(scan: { model.scan($0) }, chooseFolder: chooseFolder)
         }
         .confirmationDialog(
             "Are you sure you want to permanently erase the items in the Trash?",
@@ -80,7 +80,7 @@ struct ContentView: View {
                 Label("Enclosing Folder", systemImage: "chevron.backward")
             }
             .help("Go to the enclosing folder")
-            .disabled(model.current?.parent == nil)
+            .disabled(!model.canGoUp)
         }
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
@@ -132,18 +132,7 @@ private struct StatusBar: View {
     var body: some View {
         HStack(spacing: 4) {
             if let content = model.hovered ?? model.selected ?? model.current.map({ .node($0) }) {
-                ForEach(Array(content.owner.ancestry.enumerated()), id: \.offset) {
-                    index, crumb in
-                    if index > 0 {
-                        Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
-                    }
-                    Button {
-                        model.open(crumb)
-                    } label: {
-                        Label(crumb.displayName, systemImage: crumb.isDir ? "folder" : "doc")
-                    }
-                    .buttonStyle(.plain)
-                }
+                PathBar(model: model, node: content.owner)
                 if case .others(_, _, let count) = content {
                     Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
                     Text(smallItemsTitle(count)).italic()
@@ -164,6 +153,47 @@ private struct StatusBar: View {
         .lineLimit(1)
         .padding(.horizontal, 10)
         .frame(height: 26)
+    }
+}
+
+/// From the disk down to `node`. Folders above the scan rescan from there;
+/// the rest just open.
+private struct PathBar: View {
+    let model: AppModel
+    let node: Node
+
+    private enum Crumb {
+        case enclosing(Folder, isDisk: Bool)
+        case scanned(Node)
+    }
+
+    private var crumbs: [Crumb] {
+        model.enclosing.enumerated().map { .enclosing($1, isDisk: $0 == 0) }
+            + node.ancestry.map { .scanned($0) }
+    }
+
+    var body: some View {
+        ForEach(Array(crumbs.enumerated()), id: \.offset) { index, crumb in
+            if index > 0 {
+                Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
+            }
+            switch crumb {
+            case .enclosing(let folder, let isDisk):
+                Button {
+                    model.scan(folder.path, showing: folder.path)
+                } label: {
+                    Label(folder.name, systemImage: isDisk ? "internaldrive" : "folder")
+                }
+                .buttonStyle(.plain)
+            case .scanned(let node):
+                Button {
+                    model.open(node)
+                } label: {
+                    Label(node.displayName, systemImage: node.isDir ? "folder" : "doc")
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 }
 

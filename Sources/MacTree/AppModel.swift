@@ -14,6 +14,8 @@ final class AppModel {
     /// Polled from the scan's atomic counter while scanning.
     private(set) var scannedEntries = 0
     private(set) var root: Node?
+    /// Above the scanned folder, from its disk down; going there rescans.
+    private(set) var enclosing: [Folder] = []
     /// The directory the mosaic draws.
     private(set) var current: Node?
     /// Tile contents rather than nodes, so small items can be pointed at too.
@@ -42,7 +44,8 @@ final class AppModel {
         let revealSystem: Bool
     }
 
-    func scan(_ path: String) {
+    /// `showing` is where to land; by default a rescan stays where it was.
+    func scan(_ path: String, showing: String? = nil) {
         let progress = ScanProgress()
         phase = .scanning(path: path)
         scannedEntries = 0
@@ -55,24 +58,25 @@ final class AppModel {
             }
             let result = await Task.detached { Scanner.scan(path, progress: progress) }.value
             poll.cancel()
-            finishScan(result)
+            finishScan(result, showing: showing)
         }
     }
 
     /// Synchronous, for the snapshot tool: blocking is fine in a CLI.
     func scanBlocking(_ path: String) {
-        finishScan(Scanner.scan(path, progress: ScanProgress()))
+        finishScan(Scanner.scan(path, progress: ScanProgress()), showing: nil)
     }
 
-    private func finishScan(_ result: MacTreeCore.Scanner.Result) {
+    private func finishScan(_ result: MacTreeCore.Scanner.Result, showing: String?) {
         let tree = result.root
         if let first = result.gitFailures.first {
             error = "Git couldn\u{2019}t list \(result.gitFailures.count) repositories, so their "
                 + "files aren\u{2019}t marked Git. The first: \(first)"
         }
         // Keep the user where they were when rescanning the same root.
-        let wasAt = current?.path
+        let wasAt = showing ?? current?.path
         root = tree
+        enclosing = enclosingFolders(of: tree.path)
         current = wasAt.flatMap { find($0, in: tree) } ?? tree
         selected = nil
         hovered = nil
@@ -151,12 +155,23 @@ final class AppModel {
         hovered = nil
     }
 
+    var canGoUp: Bool {
+        current?.parent != nil || !enclosing.isEmpty
+    }
+
+    /// Past the scanned folder, this rescans its parent.
     func up() {
-        guard let parent = current?.parent else {
+        guard let current else {
             return
         }
-        selected = current.map { .node($0) }
-        current = parent
+        guard let parent = current.parent else {
+            if let outer = enclosing.last {
+                scan(outer.path, showing: outer.path)
+            }
+            return
+        }
+        selected = .node(current)
+        self.current = parent
     }
 
     func revealInFinder(_ node: Node) {
