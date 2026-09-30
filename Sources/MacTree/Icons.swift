@@ -12,6 +12,7 @@ final class Icons {
     /// Bumped as thumbnails arrive, so the mosaic repaints with them.
     private(set) var thumbnailsVersion = 0
     @ObservationIgnored private var finderIcons: [String: NSImage] = [:]
+    @ObservationIgnored private var trashIcons: [NSImage.Name: NSImage] = [:]
     @ObservationIgnored private var thumbnails: [String: NSImage] = [:]
     @ObservationIgnored private var requested: Set<String> = []
 
@@ -20,8 +21,14 @@ final class Icons {
     func icon(_ node: Node) -> NSImage {
         if node.isTrash {
             let name = node.children.isEmpty ? NSImage.trashEmptyName : NSImage.trashFullName
-            // A system image: it is always there.
-            return NSImage(named: name)!
+            if let icon = trashIcons[name] {
+                return icon
+            }
+            // A system image, always there; a copy, so resizing it leaves the shared one be.
+            let icon = NSImage(named: name)!.copy() as! NSImage
+            icon.size = NSSize(width: 128, height: 128)
+            trashIcons[name] = icon
+            return icon
         }
         return node.isDir ? finderIcon(node.path) : preview(node.path)
     }

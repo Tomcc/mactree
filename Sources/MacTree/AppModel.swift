@@ -245,8 +245,14 @@ final class AppModel {
         NSWorkspace.shared.open(URL(fileURLWithPath: node.path))
     }
 
+    /// Finder won't select a hidden item, so a hidden folder (the Trash, `.git`) opens instead.
     func revealInFinder(_ node: Node) {
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: node.path)])
+        let url = URL(fileURLWithPath: node.path)
+        if node.isDir, (try? url.resourceValues(forKeys: [.isHiddenKey]))?.isHidden == true {
+            NSWorkspace.shared.open(url)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 
     func canTrash(_ node: Node) -> Bool {
