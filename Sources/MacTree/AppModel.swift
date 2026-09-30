@@ -118,11 +118,16 @@ final class AppModel {
         if let cache = layoutCache, cache.key == key {
             return cache.tiles
         }
-        var options = LayoutOptions()
-        options.unpacked = unpacked
-        let tiles = layout(current, in: CGRect(origin: .zero, size: size), options: options)
+        let tiles = tiles(of: current, for: size)
         layoutCache = (key, tiles)
         return tiles
+    }
+
+    /// Any folder's mosaic, uncached: for the view being zoomed away from.
+    func tiles(of node: Node, for size: CGSize) -> [Tile] {
+        var options = LayoutOptions()
+        options.unpacked = unpacked
+        return layout(node, in: CGRect(origin: .zero, size: size), options: options)
     }
 
     /// Going back up to where you came from always works, even into a

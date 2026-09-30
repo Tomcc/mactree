@@ -8,13 +8,25 @@ import SwiftUI
 /// mouse never repaints the tiles.
 struct TreemapView: View {
     let model: AppModel
+    /// What was drawn last, to zoom from when it changes.
+    @State private var shown: Node?
+    @State private var zoom: Zoom?
 
     var body: some View {
         GeometryReader { geometry in
-            let tiles = model.tiles(for: geometry.size)
-            ZStack {
-                MosaicCanvas(tiles: tiles, version: model.treeVersion).equatable()
-                RingsCanvas(tiles: tiles, hovered: model.hovered, selected: model.selected)
+            let size = geometry.size
+            let tiles = model.tiles(for: size)
+            ZStack(alignment: .topLeading) {
+                if let zoom {
+                    zoomLayers(zoom, size: size)
+                } else {
+                    MosaicCanvas(tiles: tiles, version: model.treeVersion).equatable()
+                    RingsCanvas(tiles: tiles, hovered: model.hovered, selected: model.selected)
+                }
+            }
+            .clipped()
+            .onChange(of: model.current.map(ObjectIdentifier.init), initial: true) {
+                startZoom(to: model.current, size: size, tiles: tiles)
             }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
@@ -52,6 +64,83 @@ struct TreemapView: View {
             }
         }
         .background(Palette.background)
+    }
+}
+
+/// Opening a folder zooms into its tile, so the old view grows past the
+/// window while the new one grows out of that tile; going up plays it back.
+/// Both are drawn once and scaled, never laid out mid-flight.
+private struct Zoom {
+    /// The parent's mosaic and the child's; the child is drawn on top.
+    let outer: [Tile]
+    let inner: [Tile]
+    /// The child's tile in the parent's mosaic.
+    let target: CGRect
+    /// Animated: false shows the parent, true the child filling the window.
+    var zoomedIn: Bool
+}
+
+extension TreemapView {
+    @ViewBuilder fileprivate func zoomLayers(_ zoom: Zoom, size: CGSize) -> some View {
+        let bounds = CGRect(origin: .zero, size: size)
+        MosaicCanvas(tiles: zoom.outer, version: model.treeVersion).equatable()
+            .frame(width: size.width, height: size.height)
+            .placed(in: zoom.zoomedIn ? expanded(bounds, until: zoom.target) : bounds, of: size)
+        MosaicCanvas(tiles: zoom.inner, version: model.treeVersion).equatable()
+            .frame(width: size.width, height: size.height)
+            .placed(in: zoom.zoomedIn ? bounds : zoom.target, of: size)
+            .opacity(zoom.zoomedIn ? 1 : 0)
+    }
+
+    /// Zooms between the folder drawn before and `next`, when one holds the
+    /// other on screen; anything else (a new scan) just swaps.
+    fileprivate func startZoom(to next: Node?, size: CGSize, tiles: [Tile]) {
+        let previous = shown
+        shown = next
+        guard let previous, let next, previous !== next, size.width > 0, size.height > 0,
+            !Snapshot.isRendering
+        else {
+            return
+        }
+        let goingIn = next.isDescendant(of: previous)
+        let (parent, child) = goingIn ? (previous, next) : (next, previous)
+        guard child.isDescendant(of: parent) else {
+            return
+        }
+        let parentTiles = goingIn ? model.tiles(of: parent, for: size) : tiles
+        // The child may sit in a folded chain, or deeper than was drawn: zoom
+        // into the nearest tile on its way down.
+        let target = child.ancestry.reversed().lazy.compactMap { node in
+            parentTiles.first { $0.node === node || $0.chain.contains { $0 === node } }
+        }.first?.rect
+        guard let target else {
+            return
+        }
+        let childTiles = goingIn ? tiles : model.tiles(of: child, for: size)
+        zoom = Zoom(outer: parentTiles, inner: childTiles, target: target, zoomedIn: !goingIn)
+        withAnimation(.easeInOut(duration: 0.35)) {
+            zoom?.zoomedIn = goingIn
+        } completion: {
+            zoom = nil
+        }
+    }
+}
+
+/// The rect `bounds` becomes when `rect` inside it is blown up to fill it.
+private func expanded(_ bounds: CGRect, until rect: CGRect) -> CGRect {
+    let scaleX = bounds.width / rect.width
+    let scaleY = bounds.height / rect.height
+    return CGRect(
+        x: -rect.minX * scaleX, y: -rect.minY * scaleY,
+        width: bounds.width * scaleX, height: bounds.height * scaleY)
+}
+
+private extension View {
+    /// A view sized `size`, stretched into `rect`: scale and offset animate,
+    /// so the rect does too.
+    func placed(in rect: CGRect, of size: CGSize) -> some View {
+        scaleEffect(x: rect.width / size.width, y: rect.height / size.height, anchor: .topLeading)
+            .offset(x: rect.minX, y: rect.minY)
     }
 }
 
