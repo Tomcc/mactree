@@ -234,24 +234,10 @@ final class AppModel {
     func emptyTrash() {
         emptyingTrash = true
         Task {
-            let result = await Task.detached { () -> (Int32, String) in
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                process.arguments = ["-e", "tell application \"Finder\" to empty trash"]
-                let errors = Pipe()
-                process.standardError = errors
-                do {
-                    try process.run()
-                } catch {
-                    return (-1, error.localizedDescription)
-                }
-                let message = errors.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                return (process.terminationStatus, String(decoding: message, as: UTF8.self))
-            }.value
+            let failure = await askFinder(["empty trash"])
             emptyingTrash = false
-            guard result.0 == 0 else {
-                error = "Could not empty the Trash: \(result.1)"
+            if let failure {
+                error = "Could not empty the Trash: \(failure)"
                 return
             }
             if let trash = trashNode {
@@ -261,6 +247,40 @@ final class AppModel {
             }
             treeChanged()
         }
+    }
+
+    /// Finder's own Info window; there is no API for it but Finder's.
+    func getInfo(_ node: Node) {
+        Task {
+            let failure = await askFinder(
+                ["activate", "open information window of (POSIX file (item 1 of argv) as alias)"],
+                argument: node.path)
+            if let failure {
+                error = "Could not show info for \u{201C}\(node.displayName)\u{201D}: \(failure)"
+            }
+        }
+    }
+
+    /// Runs `lines` inside `tell application "Finder"`, with `argument` as
+    /// `item 1 of argv` so paths never become script text. Returns the error.
+    private func askFinder(_ lines: [String], argument: String? = nil) async -> String? {
+        let script = ["on run argv", "tell application \"Finder\""] + lines + ["end tell", "end run"]
+        let arguments = script.flatMap { ["-e", $0] } + [argument].compactMap { $0 }
+        return await Task.detached { () -> String? in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = arguments
+            let errors = Pipe()
+            process.standardError = errors
+            do {
+                try process.run()
+            } catch {
+                return error.localizedDescription
+            }
+            let message = errors.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            return process.terminationStatus == 0 ? nil : String(decoding: message, as: UTF8.self)
+        }.value
     }
 
     /// Walks our own tree by name, so no path string is parsed from outside.

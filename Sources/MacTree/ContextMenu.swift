@@ -49,6 +49,7 @@ struct ContextMenuLayer: NSViewRepresentable {
                     menu.addItem(ActionItem("Open") { model.open(node) })
                 }
                 menu.addItem(ActionItem("Show in Finder") { model.revealInFinder(node) })
+                menu.addItem(ActionItem("Get Info") { model.getInfo(node) })
                 menu.addItem(.separator())
                 let trash = ActionItem("Move to Trash") { model.moveToTrash(node) }
                 trash.isEnabled = model.canTrash(node)

@@ -43,6 +43,13 @@ struct MacTreeApp: App {
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                 Button("Choose Folder…", action: chooseFolder).keyboardShortcut("o")
                 Divider()
+                Button("Get Info") {
+                    if let node = model.selected?.node {
+                        model.getInfo(node)
+                    }
+                }
+                .keyboardShortcut("i")
+                .disabled(model.selected?.node == nil)
                 Button("Move to Trash") {
                     if let node = model.selected?.node {
                         model.moveToTrash(node)
