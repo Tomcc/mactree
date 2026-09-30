@@ -3,3 +3,4 @@ build/
 .swiftpm/
 *.png
 !assets/*.png
+.DS_Store

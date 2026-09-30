@@ -232,8 +232,7 @@ private struct PathBar: View {
                     Label {
                         Text(node.displayName)
                     } icon: {
-                        CrumbIcon(image: node.isDir
-                            ? Icons.shared.finderIcon(node.path) : Icons.shared.preview(node.path))
+                        CrumbIcon(image: Icons.shared.icon(node))
                     }
                 }
                 .buttonStyle(.plain)

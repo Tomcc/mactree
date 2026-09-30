@@ -438,3 +438,16 @@ private func isVolumeRootPath(_ info: statfs) -> String {
         #expect(library.kind == .system, "\(path)")
     }
 }
+
+@Test func theTrashIsABlockOfThingsAlreadyTrashed() throws {
+    let tree = try TempTree()
+    try tree.file(".Trash/old/big", bytes: 20_000_000)
+    try tree.file("keep/file", bytes: 1)
+    let root = Scanner.scan(tree.root, progress: ScanProgress()).root
+
+    let trash = child(root, ".Trash")
+    #expect(trash.isTrash && trash.hidesContents, "shown whole, like a file")
+    #expect(child(trash, "old").isInTrash && !child(trash, "old").isTrash)
+    #expect(trash.isInTrash)
+    #expect(!child(root, "keep").isInTrash)
+}

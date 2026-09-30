@@ -383,19 +383,21 @@ private struct MosaicCanvas: View, Equatable {
         let heights = lines.map { $0.measure(in: unbounded).height }
         let textHeight = heights.reduce(0, +) + (twoLines ? 2 : 0)
         var y = tile.rect.midY - textHeight / 2
-        // Packages show their icon above the name, and files a small preview
-        // (bigger ones get noisy), when there is room; folder blocks have none.
-        let icon = min(node.isPackage ? 64 : 25, room, tile.rect.height - textHeight - 20)
-        if !node.isDir || node.isPackage, icon >= 20 {
+        // Packages and the Trash show their icon above the name, and files a
+        // small preview (bigger ones get noisy), when there is room; other
+        // folder blocks have none.
+        let bigIcon = node.isPackage || node.isTrash
+        let icon = min(bigIcon ? 64 : 25, room, tile.rect.height - textHeight - 20)
+        if !node.isDir || bigIcon, icon >= 20 {
             let top = tile.rect.midY - (icon + 6 + textHeight) / 2
             let box = CGRect(x: tile.rect.midX - icon / 2, y: top, width: icon, height: icon)
-            if node.isPackage {
-                context.draw(Image(nsImage: Icons.shared.finderIcon(node.path)), in: box)
+            let image = Icons.shared.icon(node)
+            if bigIcon {
+                context.draw(Image(nsImage: image), in: box)
             } else {
                 // Lifted off the tile, as Finder does its thumbnails.
                 var lifted = context
                 lifted.addFilter(.shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5))
-                let image = Icons.shared.preview(node.path)
                 lifted.draw(Image(nsImage: image), in: fitted(image.size, in: box))
             }
             y = top + icon + 6

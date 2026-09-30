@@ -250,7 +250,7 @@ final class AppModel {
     }
 
     func canTrash(_ node: Node) -> Bool {
-        node !== root && !isHomeDirectory(node.path) && !node.isMountPoint
+        node !== root && !isHomeDirectory(node.path) && !node.isMountPoint && !node.isInTrash
     }
 
     /// Recoverable, so no confirmation, like Finder.

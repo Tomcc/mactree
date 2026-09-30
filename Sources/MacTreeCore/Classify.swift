@@ -186,7 +186,17 @@ extension Node {
     /// reclaimable space: there is nothing else to get back. A package
     /// always does: it is deleted whole, never in parts.
     public var hidesContents: Bool {
-        isPackage || kind == .system && reclaimableBytes < worthOpening
+        isPackage || isTrash || kind == .system && reclaimableBytes < worthOpening
+    }
+
+    /// Finder's Trash: a home's `.Trash`, or a volume's `.Trashes`. Emptied whole.
+    public var isTrash: Bool {
+        isDir && (name == ".Trash" || name == ".Trashes")
+    }
+
+    /// The Trash or something in it: there is nowhere further to move it.
+    public var isInTrash: Bool {
+        ancestry.contains { $0.isTrash }
     }
 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import MacTreeCore
 import Observation
 import QuickLookThumbnailing
 
@@ -13,6 +14,17 @@ final class Icons {
     @ObservationIgnored private var finderIcons: [String: NSImage] = [:]
     @ObservationIgnored private var thumbnails: [String: NSImage] = [:]
     @ObservationIgnored private var requested: Set<String> = []
+
+    /// What Finder shows for `node`: a file's preview, a folder's icon, and the
+    /// Trash's own, which Launch Services doesn't give its folder.
+    func icon(_ node: Node) -> NSImage {
+        if node.isTrash {
+            let name = node.children.isEmpty ? NSImage.trashEmptyName : NSImage.trashFullName
+            // A system image: it is always there.
+            return NSImage(named: name)!
+        }
+        return node.isDir ? finderIcon(node.path) : preview(node.path)
+    }
 
     func finderIcon(_ path: String) -> NSImage {
         if let icon = finderIcons[path] {
