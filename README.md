@@ -8,13 +8,14 @@ I didn't like the others! This one tries to blend in better with MacOS' design.
 
 # Features
 
-- Very fast
-- Light & Dark Mode
-- Supports Mac concepts like Bundle directories, apps, etc
-- Recommends deletable files (but don't trust me on it)
-- File icons
-- Doesn't look terrible
-- CLI Mode. Use `mactree <your path>` to open Mactree from your terminal
+- Quite fast!
+- Light & Dark Mode.
+- Supports Mac concepts like Bundle directories, apps, etc.
+- Shows system files as (expandable) blocks to reduce clutter.
+- Recommends deletable files (but don't trust me on it).
+- File preview icons.
+- Doesn't look terrible!
+- CLI Mode. Use `mactree <your path>` to open Mactree from your terminal.
 
 # Screenshots
 
