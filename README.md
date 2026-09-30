@@ -1,33 +1,40 @@
 # MacTree
 
-A native macOS treemap for finding what fills your disk. SwiftUI port of
-[tobi/disktree](https://github.com/tobi/disktree) (MIT), which is the same idea for Omarchy/Linux.
+Claude-authored modern disk tree view for MacOS
 
-Green is space you can get back (caches, build output, `node_modules`, tmp, logs, the Trash…),
-orange is git, blue is the OS, grey is everything else. Folders keep subdividing while there is
-room to show them.
+# Why?
 
-## Run
+I didn't like the others! This one tries to blend in better with MacOS' design.
+
+# Features
+
+- Very fast
+- Light & Dark Mode
+- Supports Mac concepts like Bundle directories, apps, etc
+- Recommends deletable files (but don't trust me on it)
+- File icons
+- Doesn't look terrible
+
+# Screenshots
+
+# Install
+
+Needs macOS 15 or later. Open `MacTree.dmg` and drag MacTree into Applications.
+
+MacTree › Install Command Line Tool… adds `mactree [folder]`, which opens MacTree there.
+
+Scanning `~/Library` or the Trash hits macOS privacy folders; give MacTree Full Disk Access to
+see inside them.
+
+# Build
 
 ```sh
 ./scripts/bundle.sh --install     # release build → ~/Applications/MacTree.app
-open ~/Applications/MacTree.app --args -path ~/Developer   # skips the disk picker
+swift test                        # scanner, layout, classification
+swift run MacTree --snapshot /tmp/shot ~/Developer   # renders shot-light/-dark.png, no window
+MACTREE_SIGNING_SECRET=… ./scripts/release.sh        # signed, notarized build/MacTree.dmg
 ```
 
-Scanning `~/Library` hits macOS privacy folders; give the app Full Disk Access to see them.
-The build is ad-hoc signed, so that grant resets whenever you rebuild.
+Needs only the Command Line Tools (Swift 6). `release.sh` lists the fields its secret holds.
 
-Everything is in the toolbar and the right-click menu; the Go and File menus add
-`⌘↑` / `⌘↓` / `⌘⌫` / `⌘R` for keyboard users. Empty Trash goes through Finder, so macOS asks
-once to let MacTree control it.
-
-## Develop
-
-```sh
-swift test                                              # scanner, layout, classification
-swift run MacTree --snapshot /tmp/shot ~/Developer     # renders shot-light/-dark.png, no window
-```
-
-Needs only the Command Line Tools (Swift 6, macOS 15). The scanner uses `getattrlistbulk`
-across all cores, counts allocated blocks (what `du` reports), counts hardlinks once, and
-stays on one volume.
+A SwiftUI port of [tobi/disktree](https://github.com/tobi/disktree) (MIT).
