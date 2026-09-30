@@ -12,8 +12,9 @@ struct ContentView: View {
             StatusBar(model: model)
         }
         .navigationTitle(model.current?.displayName ?? "MacTree")
-        .navigationSubtitle(subtitle)
         .toolbar { toolbar }
+        // The title is centred instead, as a principal item.
+        .toolbar(removing: .title)
         .task { await model.watchFreeSpace() }
         .sheet(
             isPresented: Binding(
@@ -73,6 +74,12 @@ struct ContentView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 0) {
+                Text(model.current?.displayName ?? "MacTree").font(.headline)
+                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
         ToolbarItemGroup(placement: .navigation) {
             Button {
                 model.goBack()
@@ -166,12 +173,12 @@ private struct PathBar: View {
     let node: Node
 
     private enum Crumb {
-        case enclosing(Folder, isDisk: Bool)
+        case enclosing(Folder)
         case scanned(Node)
     }
 
     private var crumbs: [Crumb] {
-        model.enclosing.enumerated().map { .enclosing($1, isDisk: $0 == 0) }
+        model.enclosing.map { .enclosing($0) }
             + node.ancestry.map { .scanned($0) }
     }
 
@@ -181,22 +188,40 @@ private struct PathBar: View {
                 Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
             }
             switch crumb {
-            case .enclosing(let folder, let isDisk):
+            case .enclosing(let folder):
                 Button {
                     model.scan(folder.path, showing: folder.path)
                 } label: {
-                    Label(folder.name, systemImage: isDisk ? "internaldrive" : "folder")
+                    Label {
+                        Text(folder.name)
+                    } icon: {
+                        CrumbIcon(image: Icons.shared.finderIcon(folder.path))
+                    }
                 }
                 .buttonStyle(.plain)
             case .scanned(let node):
                 Button {
                     model.open(node)
                 } label: {
-                    Label(node.displayName, systemImage: node.isDir ? "folder" : "doc")
+                    Label {
+                        Text(node.displayName)
+                    } icon: {
+                        CrumbIcon(image: node.isDir
+                            ? Icons.shared.finderIcon(node.path) : Icons.shared.preview(node.path))
+                    }
                 }
                 .buttonStyle(.plain)
             }
         }
+    }
+}
+
+/// Finder's icon for a crumb, at the size of the text beside it.
+private struct CrumbIcon: View {
+    let image: NSImage
+
+    var body: some View {
+        Image(nsImage: image).resizable().aspectRatio(contentMode: .fit).frame(width: 16, height: 16)
     }
 }
 

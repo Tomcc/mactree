@@ -20,7 +20,9 @@ struct TreemapView: View {
                 if let zoom {
                     zoomLayers(zoom, size: size)
                 } else {
-                    MosaicCanvas(tiles: tiles, version: model.treeVersion).equatable()
+                    MosaicCanvas(
+                        tiles: tiles, version: model.treeVersion,
+                        previews: Icons.shared.thumbnailsVersion).equatable()
                     RingsCanvas(tiles: tiles, hovered: model.hovered, selected: model.selected)
                 }
             }
@@ -85,10 +87,14 @@ private struct Zoom {
 extension TreemapView {
     @ViewBuilder fileprivate func zoomLayers(_ zoom: Zoom, size: CGSize) -> some View {
         let bounds = CGRect(origin: .zero, size: size)
-        MosaicCanvas(tiles: zoom.outer, version: model.treeVersion).equatable()
+        MosaicCanvas(
+            tiles: zoom.outer, version: model.treeVersion,
+            previews: Icons.shared.thumbnailsVersion).equatable()
             .frame(width: size.width, height: size.height)
             .placed(in: zoom.zoomedIn ? expanded(bounds, until: zoom.target) : bounds, of: size)
-        MosaicCanvas(tiles: zoom.inner, version: model.treeVersion).equatable()
+        MosaicCanvas(
+            tiles: zoom.inner, version: model.treeVersion,
+            previews: Icons.shared.thumbnailsVersion).equatable()
             .frame(width: size.width, height: size.height)
             .placed(in: zoom.zoomedIn ? bounds : zoom.target, of: size)
             .opacity(zoom.zoomedIn ? 1 : 0)
@@ -150,9 +156,12 @@ private struct MosaicCanvas: View, Equatable {
     nonisolated let tiles: [Tile]
     /// Tiles hold references, so equality needs the tree's version too.
     nonisolated let version: Int
+    /// Previews arrive after the first paint.
+    nonisolated let previews: Int
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.version == rhs.version && lhs.tiles.count == rhs.tiles.count
+        lhs.version == rhs.version && lhs.previews == rhs.previews
+            && lhs.tiles.count == rhs.tiles.count
             && zip(lhs.tiles, rhs.tiles).allSatisfy { $0.rect == $1.rect }
     }
 
@@ -363,13 +372,19 @@ private struct MosaicCanvas: View, Equatable {
         let heights = lines.map { $0.measure(in: unbounded).height }
         let textHeight = heights.reduce(0, +) + (twoLines ? 2 : 0)
         var y = tile.rect.midY - textHeight / 2
-        // A package shows its icon above the name, when there is room for one.
+        // Files and packages show their preview or icon above the name, as
+        // in Finder, when there is room for one; folder blocks have none.
         let icon = min(64, room, tile.rect.height - textHeight - 20)
-        if node.isPackage, icon >= 20 {
+        if !node.isDir || node.isPackage, icon >= 20 {
             let top = tile.rect.midY - (icon + 6 + textHeight) / 2
+            let boxWidth = min(room, icon * 2)
+            let image = node.isPackage
+                ? Icons.shared.finderIcon(node.path) : Icons.shared.preview(node.path)
             context.draw(
-                Image(nsImage: packageIcon(node.path)),
-                in: CGRect(x: tile.rect.midX - icon / 2, y: top, width: icon, height: icon))
+                Image(nsImage: image),
+                // Up to twice as wide as tall, so a video's frame isn't a sliver.
+                in: fitted(image.size, in: CGRect(
+                    x: tile.rect.midX - boxWidth / 2, y: top, width: boxWidth, height: icon)))
             y = top + icon + 6
         }
         for (line, height) in zip(lines, heights) {
@@ -485,19 +500,15 @@ private func stripes(across rect: CGRect) -> Path {
     return path
 }
 
-
-/// Icons are looked up once per package; the mosaic repaints on every resize.
-@MainActor private var packageIcons: [String: NSImage] = [:]
-
-@MainActor private func packageIcon(_ path: String) -> NSImage {
-    if let icon = packageIcons[path] {
-        return icon
+/// `size` scaled to fit `box`, centred: previews aren't square.
+private func fitted(_ size: CGSize, in box: CGRect) -> CGRect {
+    guard size.width > 0, size.height > 0 else {
+        return box
     }
-    let icon = NSWorkspace.shared.icon(forFile: path)
-    // The icon comes sized 32 pt, and draws from its 32 pt image when scaled up.
-    icon.size = NSSize(width: 128, height: 128)
-    packageIcons[path] = icon
-    return icon
+    let scale = min(box.width / size.width, box.height / size.height)
+    let width = size.width * scale
+    let height = size.height * scale
+    return CGRect(x: box.midX - width / 2, y: box.midY - height / 2, width: width, height: height)
 }
 
 func smallItemsTitle(_ count: Int) -> String {

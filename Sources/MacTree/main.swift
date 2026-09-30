@@ -128,6 +128,10 @@ enum Snapshot {
         if let error = model.error {
             print("error: \(error)")
         }
+        // A first render asks for the previews, which arrive asynchronously.
+        _ = ImageRenderer(content: ContentView(model: model, chooseFolder: {})
+            .frame(width: 1440, height: 900)).cgImage
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 3))
         for (scheme, suffix) in [(ColorScheme.light, "light"), (.dark, "dark")] {
             let content = ContentView(model: model, chooseFolder: {})
                 .frame(width: 1440, height: 900)
