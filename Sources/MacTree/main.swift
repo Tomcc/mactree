@@ -32,8 +32,9 @@ struct MacTreeApp: App {
         .defaultSize(width: 1440, height: 920)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open Folder…", action: chooseFolder).keyboardShortcut("o")
-                Button("Scan Whole Disk") { model.scan("/System/Volumes/Data") }
+                Button("Computer…") { model.showingComputer = true }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                Button("Choose Folder…", action: chooseFolder).keyboardShortcut("o")
                 Divider()
                 Button("Move to Trash") {
                     if let node = model.selected {

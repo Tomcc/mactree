@@ -15,6 +15,12 @@ struct ContentView: View {
         .navigationSubtitle(subtitle)
         .toolbar { toolbar }
         .task { await model.watchFreeSpace() }
+        .sheet(
+            isPresented: Binding(
+                get: { model.showingComputer }, set: { model.showingComputer = $0 })
+        ) {
+            ComputerView(scan: model.scan, chooseFolder: chooseFolder)
+        }
         .confirmationDialog(
             "Are you sure you want to permanently erase the items in the Trash?",
             isPresented: Binding(
@@ -59,11 +65,7 @@ struct ContentView: View {
         guard let current = model.current else {
             return ""
         }
-        var parts = [formatBytes(current.bytes), "\(formatCount(current.files)) files"]
-        if let disk = model.disk {
-            parts.append("\(formatBytes(disk.available)) free")
-        }
-        return parts.joined(separator: " · ")
+        return "\(formatBytes(current.bytes)) · \(formatCount(current.files)) files"
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
@@ -77,10 +79,12 @@ struct ContentView: View {
             .disabled(model.current?.parent == nil)
         }
         ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: chooseFolder) {
-                Label("Open Folder", systemImage: "folder")
+            Button {
+                model.showingComputer = true
+            } label: {
+                Label("Computer", systemImage: "desktopcomputer")
             }
-            .help("Scan another folder")
+            .help("Scan a disk or another folder")
             Button {
                 model.rescan()
             } label: {
@@ -112,8 +116,8 @@ struct ContentView: View {
     }
 }
 
-/// Finder's path bar for what is under the pointer (or selected), then the
-/// colour legend.
+/// Finder's path bar for what is under the pointer (or selected), the colour
+/// legend, and how full the disk is.
 private struct StatusBar: View {
     let model: AppModel
 
@@ -132,9 +136,15 @@ private struct StatusBar: View {
                     .buttonStyle(.plain)
                 }
                 Text(formatBytes(node.bytes)).foregroundStyle(.secondary).padding(.leading, 6)
+                if let reclaim = node.reclaim {
+                    Text("· \(reclaim.label)").foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 16)
             Legend()
+            if let disk = model.disk {
+                DiskUsage(disk: disk).padding(.leading, 12)
+            }
         }
         .font(.callout)
         .lineLimit(1)
@@ -153,12 +163,22 @@ private struct Legend: View {
                     Text(kind.label)
                 }
             }
-            HStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 2).strokeBorder(Palette.worth, lineWidth: 2)
-                    .frame(width: 10, height: 10)
-                Text("Reclaimable")
-            }
         }
         .foregroundStyle(.secondary)
+    }
+}
+
+private struct DiskUsage: View {
+    let disk: DiskSpace
+
+    var body: some View {
+        let used = disk.total - min(disk.available, disk.total)
+        HStack(spacing: 6) {
+            ProgressView(value: Double(used), total: Double(max(disk.total, 1)))
+                .frame(width: 70)
+            Text("\(formatBytes(used)) of \(formatBytes(disk.total)) used")
+                .monospacedDigit()
+        }
+        .help("\(formatBytes(disk.available)) available on \(disk.volumeName)")
     }
 }

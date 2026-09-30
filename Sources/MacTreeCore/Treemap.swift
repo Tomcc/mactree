@@ -9,8 +9,6 @@ public struct Tile: Sendable {
         case node(Node)
         /// The merged tail of a long child list, so its area still counts.
         case others(parent: Node, count: Int)
-        /// The volume's free space, drawn beside the top level for scale.
-        case free(bytes: UInt64)
     }
 
     public let content: Content
@@ -33,31 +31,29 @@ public struct LayoutOptions: Equatable, Sendable {
     public var padding: CGFloat = 1
     /// Wider gaps between top-level directories, so that level reads first.
     public var paddingOuter: CGFloat = 3
-    /// Smaller tiles cannot be read or hit, so they are dropped.
-    public var minTile: CGFloat = 5
+    /// Smaller tiles are dropped: they cannot be read, and they are noise.
+    public var minTile: CGFloat = 15
     public var maxChildren = 96
     public var header: CGFloat = 18
     public var headerInner: CGFloat = 15
     /// A directory is subdivided only if the body under its band is at least
     /// this big: depth follows the room on screen, not a fixed level count.
-    public var minBody = CGSize(width: 40, height: 24)
+    /// Room for about three by three of the smallest tiles.
+    public var minBody = CGSize(width: 45, height: 45)
 
     public init() {}
 }
 
 /// Parents come before their children, so painting in order and hit-testing
-/// in reverse both do the right thing. `free` adds a free-space tile to the
-/// top level.
-public func layout(
-    _ root: Node, in area: CGRect, free: UInt64? = nil, options: LayoutOptions
-) -> [Tile] {
+/// in reverse both do the right thing.
+public func layout(_ root: Node, in area: CGRect, options: LayoutOptions) -> [Tile] {
     var tiles: [Tile] = []
-    placeChildren(of: root, in: area, depth: 0, free: free, options: options, into: &tiles)
+    placeChildren(of: root, in: area, depth: 0, options: options, into: &tiles)
     return tiles
 }
 
 private func placeChildren(
-    of node: Node, in area: CGRect, depth: Int, free: UInt64?, options: LayoutOptions,
+    of node: Node, in area: CGRect, depth: Int, options: LayoutOptions,
     into tiles: inout [Tile]
 ) {
     guard area.width > 0, area.height > 0 else {
@@ -72,9 +68,6 @@ private func placeChildren(
     if tail > 0 {
         let bytes = ranked.dropFirst(kept.count).reduce(0) { $0 + Double($1.bytes) }
         items.append((.others(parent: node, count: tail), bytes))
-    }
-    if let free, free > 0 {
-        items.append((.free(bytes: free), Double(free)))
     }
     guard !items.isEmpty else {
         return
@@ -99,8 +92,7 @@ private func placeChildren(
                 x: rect.minX, y: header.maxY, width: rect.width,
                 height: rect.maxY - header.maxY)
             placeChildren(
-                of: child, in: body, depth: depth + 1, free: nil, options: options,
-                into: &tiles)
+                of: child, in: body, depth: depth + 1, options: options, into: &tiles)
         }
     }
 }

@@ -97,31 +97,37 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(progress.count == 55)
 }
 
-@Test func classificationInheritsAndDetectsShapes() throws {
+@Test func classificationFindsReclaimableGitAndInherits() throws {
     let tree = try TempTree()
-    try tree.file("src/tries/x/a", bytes: 1)
     try tree.file(".cache/kache/store/b", bytes: 1)
     try tree.file("rusty/Cargo.toml", bytes: 1)
     try tree.file("rusty/target/debug/c", bytes: 1)
     try tree.file("jsy/target/d", bytes: 1)
+    try tree.file("app/Logs/today.log", bytes: 1)
     try tree.file("world/.git/objects/e", bytes: 9000)
+    try tree.file("world/.git/lfs/cache/x", bytes: 1)
     try tree.file("bare/HEAD", bytes: 1)
     try tree.file("bare/refs/r", bytes: 1)
     try tree.file("bare/objects/p", bytes: 1)
-    try tree.file("game/Library/big", bytes: 90_000)
-    try tree.file("game/.git/objects/x", bytes: 10)
+    try tree.file("Library/stuff", bytes: 1)
     let root = Scanner.scan(tree.root, progress: ScanProgress())
 
-    #expect(child(root, "src").kind == .code)
-    #expect(child(root, "src", "tries", "x", "a").kind == .agentScratch)
+    #expect(child(root, ".cache", "kache", "store").kind == .reclaimable)
     #expect(child(root, ".cache", "kache", "store").reclaim == .regenerable)
     #expect(child(root, "rusty", "target").reclaim == .buildOutput)
-    #expect(child(root, "jsy", "target").reclaim == nil)
-    #expect(child(root, "world").kind == .git)
-    #expect(child(root, "bare").kind == .git)
-    #expect(child(root, "game", "Library").kind == .other)
-    #expect(child(root, "game").kind == .git, "the neutral Library is skipped")
-    #expect(worthALook(root).isEmpty, "all below the size floor")
+    #expect(child(root, "jsy", "target").kind == .other)
+    #expect(child(root, "app", "Logs", "today.log").reclaim == .logs, "files inherit")
+    #expect(child(root, "world").kind == .other)
+    #expect(child(root, "world", ".git", "objects").kind == .git)
+    #expect(child(root, "world", ".git", "lfs", "cache").kind == .reclaimable,
+        "reclaimable wins over git")
+    #expect(child(root, "bare").kind == .git, "a bare repository by its shape")
+    #expect(child(root, "Library").kind == .other, "system names only at a volume root")
+}
+
+@Test func volumeRootsAreDetected() {
+    #expect(isVolumeRoot("/"))
+    #expect(!isVolumeRoot(NSTemporaryDirectory()))
 }
 
 @Test func squarifyFillsTheAreaWithSaneAspects() {

@@ -1,26 +1,5 @@
 import Foundation
 
-/// "Worth a look": reclaimable directories big enough to matter. Topmost
-/// only, so the total is space that really exists once.
-public func worthALook(_ root: Node) -> [Node] {
-    var found: [Node] = []
-    func visit(_ node: Node) {
-        guard node.isDir, node.bytes >= minWorthBytes else {
-            return
-        }
-        if node.reclaim != nil {
-            found.append(node)
-            return
-        }
-        node.children.forEach(visit)
-    }
-    root.children.forEach(visit)
-    return found
-}
-
-/// Smaller than this is not worth a line.
-private let minWorthBytes: UInt64 = 64 * 1024 * 1024
-
 /// Decimal units, like Finder: "881 GB", "9.7 GB", "15 MB".
 public func formatBytes(_ bytes: UInt64) -> String {
     let units = ["B", "KB", "MB", "GB", "TB", "PB"]

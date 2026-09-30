@@ -3,9 +3,9 @@
 A native macOS treemap for finding what fills your disk. SwiftUI port of
 [tobi/disktree](https://github.com/tobi/disktree) (MIT), which is the same idea for Omarchy/Linux.
 
-Colour is the *kind* of data (code, git, toolchains, caches…), a green outline marks space you
-can get back (caches, build output, `node_modules`, Unity `Library`…), and the volume's free
-space is a tile of its own. Folders keep subdividing while there is room to show them.
+Green is space you can get back (caches, build output, `node_modules`, tmp, logs, the Trash…),
+orange is git, blue is the OS, grey is everything else. Folders keep subdividing while there is
+room to show them.
 
 ## Run
 

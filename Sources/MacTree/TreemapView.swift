@@ -13,8 +13,7 @@ struct TreemapView: View {
         GeometryReader { geometry in
             let tiles = model.tiles(for: geometry.size)
             ZStack {
-                MosaicCanvas(tiles: tiles, worth: model.worth, version: model.treeVersion)
-                    .equatable()
+                MosaicCanvas(tiles: tiles, version: model.treeVersion).equatable()
                 RingsCanvas(tiles: tiles, hovered: model.hovered, selected: model.selected)
             }
             .contentShape(Rectangle())
@@ -63,7 +62,6 @@ struct NodeMenu: View {
 
 private struct MosaicCanvas: View, Equatable {
     nonisolated let tiles: [Tile]
-    nonisolated let worth: Set<ObjectIdentifier>
     /// Tiles hold references, so equality needs the tree's version too.
     nonisolated let version: Int
 
@@ -75,8 +73,7 @@ private struct MosaicCanvas: View, Equatable {
     var body: some View {
         Canvas { context, _ in
             paintFills(&context)
-            paintFree(&context)
-            paintOutlines(&context)
+            paintUnreadable(&context)
             for tile in tiles {
                 paintLabel(&context, tile)
             }
@@ -92,7 +89,6 @@ private struct MosaicCanvas: View, Equatable {
             switch tile.content {
             case .node(let node): kind = node.kind
             case .others(let parent, _): kind = parent.kind
-            case .free: continue
             }
             layers[tile.depth, default: [:]][kind, default: Path()].addRect(tile.rect)
         }
@@ -104,37 +100,18 @@ private struct MosaicCanvas: View, Equatable {
         }
     }
 
-    /// Free space is an empty tile, outlined like a drop target.
-    private func paintFree(_ context: inout GraphicsContext) {
+    /// A small orange corner: part of it could not be read.
+    private func paintUnreadable(_ context: inout GraphicsContext) {
+        var marks = Path()
         for tile in tiles {
-            if case .free = tile.content {
-                context.stroke(
-                    Path(roundedRect: tile.rect.insetBy(dx: 1, dy: 1), cornerRadius: 4),
-                    with: .color(.secondary),
-                    style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-            }
-        }
-    }
-
-    /// Green: space that can be had back. A small orange corner: part of it
-    /// could not be read.
-    private func paintOutlines(_ context: inout GraphicsContext) {
-        var worthPath = Path()
-        var unreadable = Path()
-        for tile in tiles {
-            guard let node = tile.node else {
-                continue
-            }
-            if worth.contains(ObjectIdentifier(node)) {
-                worthPath.addRect(tile.rect.insetBy(dx: 1, dy: 1))
-            }
-            if node.unreadableHere, tile.rect.width > 12, tile.rect.height > 12 {
-                unreadable.addRect(
+            if let node = tile.node, node.unreadableHere, tile.rect.width > 12,
+                tile.rect.height > 12
+            {
+                marks.addRect(
                     CGRect(x: tile.rect.maxX - 6, y: tile.rect.minY + 2, width: 4, height: 4))
             }
         }
-        context.stroke(worthPath, with: .color(Palette.worth), lineWidth: 2)
-        context.fill(unreadable, with: .color(Color(nsColor: .systemOrange)))
+        context.fill(marks, with: .color(Color(nsColor: .systemOrange)))
     }
 
     private func paintLabel(_ context: inout GraphicsContext, _ tile: Tile) {
@@ -152,9 +129,6 @@ private struct MosaicCanvas: View, Equatable {
         case .others(_, let count):
             text = "\(count) more"
             size = ""
-        case .free(let bytes):
-            text = "Free space"
-            size = formatBytes(bytes)
         }
         let bold = tile.depth == 0 && tile.header != nil
         let name = context.resolve(

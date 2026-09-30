@@ -19,12 +19,11 @@ final class AppModel {
     var selected: Node?
     var hovered: Node?
     private(set) var disk: DiskSpace?
-    /// Reclaimable directories, outlined in the mosaic.
-    private(set) var worth: Set<ObjectIdentifier> = []
     /// Bumped whenever the tree changes shape, to invalidate the layout.
     private(set) var treeVersion = 0
     private(set) var emptyingTrash = false
     var confirmingEmptyTrash = false
+    var showingComputer = false
     var error: String?
 
     @ObservationIgnored private var layoutCache: (key: LayoutKey, tiles: [Tile])?
@@ -33,7 +32,6 @@ final class AppModel {
         let size: CGSize
         let node: ObjectIdentifier
         let version: Int
-        let free: UInt64?
     }
 
     func scan(_ path: String) {
@@ -91,7 +89,6 @@ final class AppModel {
     private func treeChanged() {
         treeVersion += 1
         if let root {
-            worth = Set(worthALook(root).map(ObjectIdentifier.init))
             disk = try? DiskSpace(for: root.path)
         }
     }
@@ -100,16 +97,11 @@ final class AppModel {
         guard let current else {
             return []
         }
-        // Free space only makes sense beside the whole scan, not a part of it.
-        let free = current === root ? disk?.available : nil
-        let key = LayoutKey(
-            size: size, node: ObjectIdentifier(current), version: treeVersion, free: free)
+        let key = LayoutKey(size: size, node: ObjectIdentifier(current), version: treeVersion)
         if let cache = layoutCache, cache.key == key {
             return cache.tiles
         }
-        let tiles = layout(
-            current, in: CGRect(origin: .zero, size: size), free: free,
-            options: LayoutOptions())
+        let tiles = layout(current, in: CGRect(origin: .zero, size: size), options: LayoutOptions())
         layoutCache = (key, tiles)
         return tiles
     }

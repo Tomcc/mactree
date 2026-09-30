@@ -1,107 +1,57 @@
-// What a directory *is* (colour) and whether its space can be had back
-// (hatch). Ported from disktree's classify.rs, plus the usual macOS names.
+import Darwin
+
+// What a directory is, for colour: space that can be had back, git, the OS,
+// or anything else. Reclaimable wins: a cache inside the system is a cache.
 
 public enum Kind: CaseIterable, Sendable {
-    case code, agentScratch, toolchain, synced, git, media, documents, cache
-    case other
+    case reclaimable, git, system, other
 
     /// What the legend lists, in its order.
-    public static let legend: [Kind] = [
-        .code, .agentScratch, .toolchain, .synced, .git, .media, .documents,
-        .cache,
-    ]
+    public static let legend: [Kind] = [.reclaimable, .git, .system]
 
     public var label: String {
         switch self {
-        case .code: "Code"
-        case .agentScratch: "Agent scratch"
-        case .toolchain: "Toolchains"
-        case .synced: "Synced"
+        case .reclaimable: "Reclaimable"
         case .git: "Git"
-        case .media: "Media"
-        case .documents: "Documents"
-        case .cache: "Cache"
+        case .system: "System"
         case .other: "Other"
         }
     }
 }
 
+/// Why a directory's space can be had back.
 public enum Reclaim: Sendable {
-    case regenerable, syncHistory, packageStore, buildOutput, reinstallable
-    case sandboxLayers, snapshots, trash, temporary
+    case regenerable, syncHistory, packageStore, buildOutput, reinstallable, trash
+    case temporary, logs
 
     public var label: String {
         switch self {
-        case .regenerable: "regenerable"
+        case .regenerable: "cache"
         case .syncHistory: "sync history"
         case .packageStore: "package store"
         case .buildOutput: "build output"
         case .reinstallable: "reinstallable"
-        case .sandboxLayers: "sandbox layers"
-        case .snapshots: "snapshots"
         case .trash: "trash"
-        case .temporary: "temporary"
+        case .temporary: "temporary files"
+        case .logs: "logs"
         }
     }
 }
 
-public func kind(ofName name: String) -> Kind? {
-    switch name.lowercased() {
-    case "src", "code", "projects", "repos", "dev", "developer", "work",
-        "workspace", "workspaces", "github.com", "gitlab.com", "sites",
-        "development":
-        return .code
-    case ".codex", ".claude", ".herdr", ".pi", ".cursor", ".aider", ".gemini",
-        ".continue", ".windsurf", ".microsandbox", ".omp", ".agents", ".openai",
-        "tries", "worktrees", "experiments", "scratch", "playground":
-        return .agentScratch
-    case ".cargo", ".rustup", ".local", ".npm", ".pnpm-store", "pnpm", ".bun",
-        ".deno", "go", ".gradle", ".m2", ".platformio", "mise", ".mise",
-        ".pyenv", ".nvm", ".gem", "gem", ".rbenv", ".espressif", ".arduino15",
-        ".config", ".vscode", ".zig", ".rye", ".conda", "anaconda3",
-        "miniconda3", ".opam", ".ghcup", ".stack", ".julia", ".dotnet",
-        ".android", ".sdkman", ".volta", ".yarn", ".java", ".swiftpm",
-        "homebrew", "cellar", "xcode", "coresimulator", ".unity", "unity":
-        return .toolchain
-    case "sync", "dropbox", "nextcloud", "google drive", "onedrive",
-        "pclouddrive", "mega", ".stversions", "mobile documents",
-        "cloudstorage", "icloud drive":
-        return .synced
-    // App data: neutral, so a big `Caches` inside does not paint it all yellow.
-    case "library", "application support", "containers", "group containers":
-        return .other
-    case ".git", ".git-lfs", "lfs":
-        return .git
-    case "pictures", "photos", "music", "videos", "movies", "steam", "models",
-        ".ollama", ".lmstudio", "games", "wineprefix",
-        "photos library.photoslibrary":
-        return .media
-    case "documents", "desktop", "downloads", "books", "notes", "obsidian",
-        "public", "templates", "mail":
-        return .documents
-    case ".cache", "cache", "caches", ".ccache", ".sccache", "_cacache",
-        "__pycache__", "node_modules", "trash", ".trash", "tmp", ".tmp",
-        "deriveddata", "logs":
-        return .cache
-    default:
-        return nil
-    }
-}
-
-/// Judged from the name, the kind of the directory holding it, and its
-/// siblings' names: `target` is only build output beside a `Cargo.toml`.
+/// Judged from the name, its parent's name, and its siblings' names: `target`
+/// is only build output beside a `Cargo.toml`.
 public func reclaim(
-    ofName name: String, parent: Kind, hasSibling: (String) -> Bool
+    ofName name: String, parentName: String, hasSibling: (String) -> Bool
 ) -> Reclaim? {
     switch name.lowercased() {
-    case ".cache", "cache", "caches", ".ccache", ".sccache", "_cacache":
+    case ".cache", "cache", "caches", ".ccache", ".sccache", "_cacache", "__pycache__",
+        ".pytest_cache", ".mypy_cache", ".ruff_cache", ".parcel-cache", ".turbo":
         return .regenerable
     case ".stversions":
         return .syncHistory
-    case ".pnpm-store", "pnpm":
+    case ".pnpm-store", ".npm", ".yarn":
         return .packageStore
-    case "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".next",
-        ".turbo", ".parcel-cache", "deriveddata":
+    case ".next", "deriveddata":
         return .buildOutput
     case "target" where hasSibling("Cargo.toml"):
         return .buildOutput
@@ -112,75 +62,53 @@ public func reclaim(
         return .buildOutput
     case "node_modules" where hasSibling("package.json"):
         return .reinstallable
-    case "layers" where parent == .agentScratch:
-        return .sandboxLayers
-    case "snapshots" where parent == .agentScratch:
-        return .snapshots
-    case "trash", ".trash":
+    case "trash", ".trash", ".trashes":
         return .trash
-    case "tmp", ".tmp":
+    case "tmp", ".tmp", "temp", "temporaryitems":
         return .temporary
+    // macOS's per-user temporary and cache folders live in /private/var/folders.
+    case "folders" where parentName == "var":
+        return .temporary
+    case "log", "logs", "diagnosticreports":
+        return .logs
     default:
         return nil
     }
 }
 
-/// Top-down: a node's own name wins, otherwise it inherits from its parent.
-/// Reclaimable space is inherited too, so everything under a cache is hatched.
+/// What the OS owns at the top of a volume.
+private let systemNames: Set<String> = [
+    "System", "Library", "private", "usr", "bin", "sbin", "cores", "opt",
+    ".Spotlight-V100", ".fseventsd", ".DocumentRevisions-V100", ".MobileBackups",
+]
+
+/// Top-down; a node inherits its parent's kind unless its own name says more.
 public func classify(_ root: Node) {
     root.kind = .other
     root.reclaim = nil
-    let names = Set(root.children.map(\.name))
-    for child in root.children {
-        // An unknown top-level name takes its largest recognisable child's
-        // kind: a checkout that is mostly `.git` reads as git.
-        let childKind = kind(ofName: child.name)
-            ?? (isGitStore(child) ? .git : nil)
-            ?? dominantChildKind(child)
-            ?? .other
-        let childReclaim = child.isDir
-            ? reclaim(ofName: child.name, parent: .other, hasSibling: names.contains)
-            : nil
-        classifyBelow(child, kind: childKind, reclaim: childReclaim)
-    }
+    classifyChildren(of: root, kind: .other, reclaim: nil, volumeRoot: isVolumeRoot(root.path))
 }
 
-func classifyBelow(_ node: Node, kind: Kind, reclaim: Reclaim?) {
-    node.kind = kind
-    node.reclaim = reclaim
-    guard !node.children.isEmpty else {
-        return
-    }
+private func classifyChildren(of node: Node, kind: Kind, reclaim: Reclaim?, volumeRoot: Bool) {
     let names = Set(node.children.map(\.name))
     for child in node.children {
-        let childKind = child.isDir
-            ? MacTreeCore.kind(ofName: child.name) ?? (isGitStore(child) ? .git : kind)
-            : kind
-        let childReclaim = reclaim ?? (child.isDir
-            ? MacTreeCore.reclaim(
-                ofName: child.name, parent: kind, hasSibling: names.contains)
-            : nil)
-        classifyBelow(child, kind: childKind, reclaim: childReclaim)
-    }
-}
-
-/// The first recognisable name down the largest children, a few levels deep.
-func dominantChildKind(_ node: Node) -> Kind? {
-    var node = node
-    for _ in 0..<3 {
-        for child in node.children where child.isDir {
-            // A neutral name (`Library`) says nothing about what fills it.
-            let found = kind(ofName: child.name) ?? (isGitStore(child) ? .git : nil)
-            if let found, found != .other {
-                return found
+        var childReclaim = reclaim
+        var childKind = kind
+        if child.isDir {
+            childReclaim = reclaim ?? MacTreeCore.reclaim(
+                ofName: child.name, parentName: node.displayName, hasSibling: names.contains)
+            if childReclaim != nil {
+                childKind = .reclaimable
+            } else if child.name == ".git" || isGitStore(child) {
+                childKind = .git
+            } else if volumeRoot && systemNames.contains(child.name) {
+                childKind = .system
             }
         }
-        guard let next = node.children.first(where: \.isDir) else {
-            return nil
-        }
-        node = next
+        child.kind = childKind
+        child.reclaim = childReclaim
+        classifyChildren(of: child, kind: childKind, reclaim: childReclaim, volumeRoot: false)
     }
-    return nil
 }
 
 /// A git object store by its shape, whatever it is called.
@@ -190,4 +118,16 @@ func isGitStore(_ node: Node) -> Bool {
     }
     let has = { (name: String) in node.children.contains { $0.name == name } }
     return has("objects") && has("refs") && has("HEAD")
+}
+
+/// Whether `path` is where a volume is mounted.
+func isVolumeRoot(_ path: String) -> Bool {
+    var info = statfs()
+    guard statfs(path, &info) == 0 else {
+        return false
+    }
+    let mountPoint = withUnsafeBytes(of: info.f_mntonname) { raw in
+        String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+    }
+    return mountPoint == path
 }
