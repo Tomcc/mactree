@@ -183,6 +183,21 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(others == [6])
 }
 
+@Test func dustMergesIntoOneTileBesideABigChild() {
+    let root = Node(name: "/r", isDir: true)
+    root.adopt(Node(name: "big", isDir: false, bytes: 1_000_000))
+    for index in 0..<200 {
+        root.adopt(Node(name: "dust\(index)", isDir: false, bytes: 10))
+    }
+    root.aggregate()
+    let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 800, height: 500), options: LayoutOptions())
+    #expect(tiles.count <= 2)
+    #expect(tiles.first?.node?.name == "big")
+    for tile in tiles {
+        #expect(tile.rect.width >= 30 && tile.rect.height >= 30, "every tile fits a label")
+    }
+}
+
 @Test func formatting() {
     #expect(formatBytes(0) == "0 B")
     #expect(formatBytes(881_000_000_000) == "881 GB")

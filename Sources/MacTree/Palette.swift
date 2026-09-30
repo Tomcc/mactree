@@ -22,7 +22,9 @@ enum Palette {
     static func fill(_ kind: Kind, depth: Int, in environment: EnvironmentValues) -> Color {
         let base = background.resolve(in: environment)
         let tint = color(kind).resolve(in: environment)
-        let amount = (kind == .other ? 0.10 : 0.16) + 0.04 * Float(min(depth, 4))
+        // The same tint reads stronger on a dark background.
+        let scale: Float = environment.colorScheme == .dark ? 0.7 : 1
+        let amount = ((kind == .other ? 0.04 : 0.11) + 0.025 * Float(min(depth, 4))) * scale
         let mix = { (a: Float, b: Float) in a + (b - a) * amount }
         return Color(Color.Resolved(
             red: mix(base.red, tint.red), green: mix(base.green, tint.green),

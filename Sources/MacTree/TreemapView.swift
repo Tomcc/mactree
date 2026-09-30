@@ -73,6 +73,7 @@ private struct MosaicCanvas: View, Equatable {
     var body: some View {
         Canvas { context, _ in
             paintFills(&context)
+            paintHatch(&context)
             paintUnreadable(&context)
             for tile in tiles {
                 paintLabel(&context, tile)
@@ -80,24 +81,64 @@ private struct MosaicCanvas: View, Equatable {
         }
     }
 
-    /// One path per depth and kind: a handful of fills instead of thousands.
-    /// Depth order matters, since children paint over their parent's body.
+    /// Tiles are raised cards, like macOS bezels: a soft shadow below and a
+    /// faint highlight along the top edge separate them, not a drawn line.
+    /// One path per depth and kind keeps it to a handful of draws; depth order
+    /// matters, since children paint over their parent's body.
     private func paintFills(_ context: inout GraphicsContext) {
+        let dark = context.environment.colorScheme == .dark
         var layers: [Int: [Kind: Path]] = [:]
+        var highlights = Path()
         for tile in tiles {
             let kind: Kind
             switch tile.content {
             case .node(let node): kind = node.kind
             case .others(let parent, _): kind = parent.kind
             }
-            layers[tile.depth, default: [:]][kind, default: Path()].addRect(tile.rect)
+            let radius = tileRadius(tile)
+            layers[tile.depth, default: [:]][kind, default: Path()]
+                .addRoundedRect(in: tile.rect, cornerSize: CGSize(width: radius, height: radius))
+            highlights.move(to: CGPoint(x: tile.rect.minX + radius, y: tile.rect.minY + 0.5))
+            highlights.addLine(to: CGPoint(x: tile.rect.maxX - radius, y: tile.rect.minY + 0.5))
         }
+        var raised = context
+        raised.addFilter(
+            .shadow(color: .black.opacity(dark ? 0.5 : 0.22), radius: 1.5, x: 0, y: 0.5))
         for depth in layers.keys.sorted() {
             for (kind, path) in layers[depth] ?? [:] {
                 let fill = Palette.fill(kind, depth: depth, in: context.environment)
-                context.fill(path, with: .color(fill))
+                raised.fill(path, with: .color(fill))
             }
         }
+        context.stroke(
+            highlights, with: .color(.white.opacity(dark ? 0.09 : 0.7)), lineWidth: 1)
+    }
+
+    /// "Smaller items" is many things too small to draw, hatched so it reads
+    /// as a crowd rather than one more file.
+    private func paintHatch(_ context: inout GraphicsContext) {
+        var region = Path()
+        for tile in tiles {
+            if case .others = tile.content {
+                let radius = tileRadius(tile)
+                region.addRoundedRect(
+                    in: tile.rect, cornerSize: CGSize(width: radius, height: radius))
+            }
+        }
+        guard !region.isEmpty else {
+            return
+        }
+        var hatch = context
+        hatch.clip(to: region)
+        let bounds = region.boundingRect
+        var lines = Path()
+        var x = bounds.minX - bounds.height
+        while x < bounds.maxX {
+            lines.move(to: CGPoint(x: x, y: bounds.maxY))
+            lines.addLine(to: CGPoint(x: x + bounds.height, y: bounds.minY))
+            x += 5
+        }
+        hatch.stroke(lines, with: .color(.primary.opacity(0.12)), lineWidth: 1)
     }
 
     /// A small orange corner: part of it could not be read.
@@ -117,9 +158,6 @@ private struct MosaicCanvas: View, Equatable {
     private func paintLabel(_ context: inout GraphicsContext, _ tile: Tile) {
         // A subdivided directory's name lives in its band, a leaf's at its top.
         let owned = tile.header ?? tile.rect
-        guard owned.width >= 36, owned.height >= 12 else {
-            return
-        }
         let text: String
         let size: String
         switch tile.content {
@@ -127,7 +165,7 @@ private struct MosaicCanvas: View, Equatable {
             text = node.displayName
             size = formatBytes(node.bytes)
         case .others(_, let count):
-            text = "\(count) more"
+            text = "\(count) smaller items"
             size = ""
         }
         let bold = tile.depth == 0 && tile.header != nil
@@ -176,13 +214,10 @@ private struct RingsCanvas: View {
         Canvas { context, _ in
             if let hovered, hovered !== selected, let tile = tile(of: hovered) {
                 context.stroke(
-                    Path(tile.rect.insetBy(dx: 0.5, dy: 0.5)),
-                    with: .color(.primary.opacity(0.5)), lineWidth: 1)
+                    ring(tile, inset: 0.5), with: .color(.primary.opacity(0.4)), lineWidth: 1)
             }
             if let selected, let tile = tile(of: selected) {
-                context.stroke(
-                    Path(tile.rect.insetBy(dx: 1, dy: 1)), with: .color(.accentColor),
-                    lineWidth: 2)
+                context.stroke(ring(tile, inset: 1), with: .color(.accentColor), lineWidth: 2)
             }
         }
         .allowsHitTesting(false)
@@ -191,4 +226,16 @@ private struct RingsCanvas: View {
     private func tile(of node: Node) -> Tile? {
         tiles.first { $0.node === node }
     }
+
+    private func ring(_ tile: Tile, inset: CGFloat) -> Path {
+        let radius = max(tileRadius(tile) - inset, 0)
+        return Path(
+            roundedRect: tile.rect.insetBy(dx: inset, dy: inset),
+            cornerSize: CGSize(width: radius, height: radius))
+    }
+}
+
+/// Top-level cards are rounder, so that level reads first.
+private func tileRadius(_ tile: Tile) -> CGFloat {
+    tile.depth == 0 ? 5 : 3
 }

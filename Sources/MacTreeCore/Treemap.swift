@@ -28,18 +28,19 @@ public struct Tile: Sendable {
 }
 
 public struct LayoutOptions: Equatable, Sendable {
-    public var padding: CGFloat = 1
+    /// Room between siblings for their shadows.
+    public var padding: CGFloat = 2
     /// Wider gaps between top-level directories, so that level reads first.
-    public var paddingOuter: CGFloat = 3
-    /// Smaller tiles are dropped: they cannot be read, and they are noise.
-    public var minTile: CGFloat = 15
+    public var paddingOuter: CGFloat = 4
+    /// Every tile fits a label; children that would be smaller are merged.
+    public var minTile: CGFloat = 30
     public var maxChildren = 96
     public var header: CGFloat = 18
     public var headerInner: CGFloat = 15
-    /// A directory is subdivided only if the body under its band is at least
-    /// this big: depth follows the room on screen, not a fixed level count.
-    /// Room for about three by three of the smallest tiles.
-    public var minBody = CGSize(width: 45, height: 45)
+    /// A directory is subdivided only if the body under its band has room
+    /// for about three by three of the smallest tiles: depth follows the room
+    /// on screen, not a fixed level count.
+    public var minBody = CGSize(width: 90, height: 90)
 
     public init() {}
 }
@@ -60,7 +61,13 @@ private func placeChildren(
         return
     }
     let ranked = node.children.filter { $0.bytes > 0 }
-    let kept = ranked.prefix(options.maxChildren)
+    // Children too small for a tile of their own go into one "smaller items"
+    // tile, so a big child beside a lot of dust still reads as both.
+    let total = ranked.reduce(0) { $0 + Double($1.bytes) }
+    let bytesToArea = Double(area.width * area.height) / max(total, 1)
+    let minArea = Double(options.minTile * options.minTile) * 2
+    let kept = ranked.prefix { Double($0.bytes) * bytesToArea >= minArea }
+        .prefix(options.maxChildren)
     var items: [(content: Tile.Content, value: Double)] = kept.map {
         (.node($0), Double($0.bytes))
     }
