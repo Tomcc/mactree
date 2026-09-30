@@ -58,6 +58,8 @@ struct ContentView: View {
             } actions: {
                 Button("Choose a Disk or Folder…") { model.showingComputer = true }
             }
+            // Fills the window, so the status bar stays at the bottom.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .scanning(let path):
             VStack(spacing: 8) {
                 ProgressView()
