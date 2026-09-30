@@ -36,45 +36,9 @@ struct TreemapView: View {
                     model.selected = content
                 }
             }
-            .contextMenu {
-                switch model.hovered {
-                case .node(let node):
-                    NodeMenu(model: model, node: node)
-                case .others(let parent, _, _):
-                    SmallItemsMenu(model: model, parent: parent)
-                case nil:
-                    EmptyView()
-                }
-            }
+            .overlay(ContextMenuLayer(model: model, tiles: tiles))
         }
         .background(Palette.background)
-    }
-}
-
-struct NodeMenu: View {
-    let model: AppModel
-    let node: Node
-
-    var body: some View {
-        if node.isDir {
-            Button("Open") { model.open(node) }
-        }
-        Button("Show in Finder") { model.revealInFinder(node) }
-        Divider()
-        Button("Move to Trash") { model.moveToTrash(node) }
-            .disabled(!model.canTrash(node))
-    }
-}
-
-struct SmallItemsMenu: View {
-    let model: AppModel
-    let parent: Node
-
-    var body: some View {
-        if parent !== model.current {
-            Button("Open \u{201C}\(parent.displayName)\u{201D}") { model.open(parent) }
-        }
-        Button("Show in Finder") { model.revealInFinder(parent) }
     }
 }
 
