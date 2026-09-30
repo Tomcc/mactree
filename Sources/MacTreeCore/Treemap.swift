@@ -21,6 +21,9 @@ public struct Tile: Sendable {
     /// Where the name goes: the header, or the same-height top of a tile
     /// that is not subdivided.
     public let title: CGRect
+    /// Levels of nested tiles under this one, along its deepest branch: 0 for
+    /// a tile with no child tiles.
+    public fileprivate(set) var levelsBelow = 0
 
     init(content: Content, rect: CGRect, depth: Int, header: CGRect?, options: LayoutOptions) {
         self.content = content
@@ -92,17 +95,23 @@ public struct LayoutOptions: Equatable, Sendable {
 /// in reverse both do the right thing.
 public func layout(_ root: Node, in area: CGRect, options: LayoutOptions) -> [Tile] {
     var tiles: [Tile] = []
-    placeChildren(of: root, in: area, depth: 0, options: options, into: &tiles)
+    _ = placeChildren(of: root, in: area, depth: 0, options: options, into: &tiles)
     return tiles
 }
 
 private typealias Placed = (content: Tile.Content, rect: CGRect)
 
+/// Returns the levels of tiles it placed, for the parent's `levelsBelow`.
+/// Small items are a label, not a tile, so they don't count.
 private func placeChildren(
     of node: Node, in area: CGRect, depth: Int, options: LayoutOptions,
     into tiles: inout [Tile]
-) {
+) -> Int {
+    var levels = 0
     for (content, rect) in fitChildren(of: node, in: area, depth: depth, options: options) {
+        if content.node != nil {
+            levels = max(levels, 1)
+        }
         // No room for a band and a readable body: the tile stays whole.
         guard case .node(let child) = content, child.isDir,
             let header = headerBand(rect, depth: depth, options: options)
@@ -120,10 +129,15 @@ private func placeChildren(
                 content: content, rect: rect, depth: depth, header: nil, options: options))
             continue
         }
+        let index = tiles.count
         tiles.append(Tile(
             content: content, rect: rect, depth: depth, header: header, options: options))
-        placeChildren(of: child, in: body, depth: depth + 1, options: options, into: &tiles)
+        let below = placeChildren(
+            of: child, in: body, depth: depth + 1, options: options, into: &tiles)
+        tiles[index].levelsBelow = below
+        levels = max(levels, below + 1)
     }
+    return levels
 }
 
 /// Children big enough for a tile of their own, largest first, and one

@@ -100,12 +100,17 @@ private struct MosaicCanvas: View, Equatable {
 
     /// Flat tiles, separated by the gaps between them. Bodies are neutral and
     /// only the title band carries the kind's colour; a thin top-left
-    /// highlight and soft shadow lift each tile off its parent. One path per depth and colour
-    /// keeps it to a handful of draws; depth order matters, since children
-    /// paint over their parent's body.
+    /// highlight and soft shadow lift each tile off its parent. One path per
+    /// depth and colour keeps it to a handful of draws; depth order matters,
+    /// since children paint over their parent's body.
     private func paintFills(_ context: inout GraphicsContext) {
-        var bodies: [Int: Path] = [:]
-        var titles: [Int: [Kind: Path]] = [:]
+        struct Title: Hashable {
+            let kind: Kind
+            let levelsBelow: Int
+        }
+        var outlines: [Int: Path] = [:]
+        var bodies: [Int: [Int: Path]] = [:]
+        var titles: [Int: [Title: Path]] = [:]
         var highlights = Path()
         var shades = Path()
         for tile in tiles {
@@ -115,8 +120,12 @@ private struct MosaicCanvas: View, Equatable {
                 continue
             }
             let radius = tileRadius(tile)
-            bodies[tile.depth, default: Path()].addPath(rounded(tile.rect, radius))
-            titles[tile.depth, default: [:]][node.kind, default: Path()].addPath(titleShape(tile))
+            let outline = rounded(tile.rect, radius)
+            outlines[tile.depth, default: Path()].addPath(outline)
+            bodies[tile.depth, default: [:]][tile.levelsBelow, default: Path()].addPath(outline)
+            titles[tile.depth, default: [:]][
+                Title(kind: node.kind, levelsBelow: tile.levelsBelow), default: Path()
+            ].addPath(titleShape(tile))
             // Up the left side and along the top, following the corner.
             let inner = tile.rect.insetBy(dx: 0.5, dy: 0.5)
             highlights.move(to: CGPoint(x: inner.minX, y: inner.maxY - radius))
@@ -138,20 +147,23 @@ private struct MosaicCanvas: View, Equatable {
             Path(CGRect(origin: .zero, size: context.clipBoundingRect.size)),
             with: .color(Palette.well(in: environment)))
         let dark = environment.colorScheme == .dark
-        for depth in bodies.keys.sorted() {
-            if let body = bodies[depth] {
-                // A soft shadow on the parent, so deep stacks of similar greys
-                // still read as layers; clipped to the parent, never spilling.
-                var layer = context
-                if let parents = bodies[depth - 1] {
-                    layer.clip(to: parents)
-                }
-                layer.addFilter(
-                    .shadow(color: .black.opacity(dark ? 0.35 : 0.1), radius: 5, y: 1))
-                layer.fill(body, with: .color(Palette.body(depth: depth, in: environment)))
+        for depth in outlines.keys.sorted() {
+            // A soft shadow on the parent, so deep stacks of similar greys
+            // still read as layers; clipped to the parent, never spilling.
+            var layer = context
+            if let parents = outlines[depth - 1] {
+                layer.clip(to: parents)
             }
-            for (kind, path) in titles[depth] ?? [:] {
-                context.fill(path, with: .color(Palette.title(kind, depth: depth, in: environment)))
+            layer.addFilter(.shadow(color: .black.opacity(dark ? 0.35 : 0.1), radius: 5, y: 1))
+            for (levels, path) in bodies[depth] ?? [:] {
+                layer.fill(
+                    path, with: .color(Palette.body(levelsBelow: levels, in: environment)))
+            }
+            for (title, path) in titles[depth] ?? [:] {
+                context.fill(
+                    path,
+                    with: .color(Palette.title(
+                        title.kind, levelsBelow: title.levelsBelow, in: environment)))
             }
         }
         context.stroke(highlights, with: .color(.white.opacity(dark ? 0.08 : 0.8)), lineWidth: 1)

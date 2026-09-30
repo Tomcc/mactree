@@ -246,3 +246,21 @@ func child(_ node: Node, _ names: String...) -> Node {
         #expect(hole < sliver, "trial \(trial) left a hole")
     }
 }
+
+@Test func levelsBelowFollowTheDeepestBranch() {
+    let root = Node(name: "/r", isDir: true)
+    let deep = Node(name: "deep", isDir: true)
+    let middle = Node(name: "middle", isDir: true)
+    middle.adopt(Node(name: "a", isDir: false, bytes: 600))
+    middle.adopt(Node(name: "b", isDir: false, bytes: 400))
+    deep.adopt(middle)
+    deep.adopt(Node(name: "leaf", isDir: false, bytes: 1000))
+    root.adopt(deep)
+    root.adopt(Node(name: "file", isDir: false, bytes: 1000))
+    root.aggregate()
+    let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 1600, height: 1000), options: LayoutOptions())
+    let levels = Dictionary(uniqueKeysWithValues: tiles.compactMap { tile in
+        tile.node.map { ($0.name, tile.levelsBelow) }
+    })
+    #expect(levels == ["deep": 2, "middle": 1, "a": 0, "b": 0, "leaf": 0, "file": 0])
+}

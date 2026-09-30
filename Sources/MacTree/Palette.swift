@@ -19,10 +19,10 @@ enum Palette {
     static let background = Color(nsColor: .windowBackgroundColor)
     private static let surface = Color(nsColor: .textBackgroundColor)
 
-    /// A tile's body: neutral, and lighter the deeper it is nested, the way
-    /// stacked things catch more light. Level 0 is the darkest in both modes.
-    static func body(depth: Int, in environment: EnvironmentValues) -> Color {
-        let step = Float(min(depth, 4))
+    /// A tile's body: neutral, and lighter the fewer levels sit on top of it,
+    /// the way the top of a stack catches the most light. Leaves are lightest.
+    static func body(levelsBelow: Int, in environment: EnvironmentValues) -> Color {
+        let step = Float(4 - min(levelsBelow, 4))
         let surface = surface.resolve(in: environment)
         if environment.colorScheme == .dark {
             return Color(surface.mixed(with: .white, 0.02 + 0.035 * step))
@@ -38,8 +38,8 @@ enum Palette {
 
     /// A title band: the kind's colour over the body's lightness, the one
     /// place the colour is shown.
-    static func title(_ kind: Kind, depth: Int, in environment: EnvironmentValues) -> Color {
-        let body = body(depth: depth, in: environment).resolve(in: environment)
+    static func title(_ kind: Kind, levelsBelow: Int, in environment: EnvironmentValues) -> Color {
+        let body = body(levelsBelow: levelsBelow, in: environment).resolve(in: environment)
         // The same tint reads stronger on a dark background.
         let scale: Float = environment.colorScheme == .dark ? 0.7 : 1
         let amount = (kind == .other ? 0.06 : 0.24) * scale
