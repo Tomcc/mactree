@@ -18,6 +18,18 @@ public struct Tile: Sendable {
     /// The band a subdivided directory keeps for its own name; its children
     /// are laid out below it, and it hit-tests as the parent.
     public let header: CGRect?
+    /// Where the name goes: the header, or the same-height top of a tile
+    /// that is not subdivided.
+    public let title: CGRect
+
+    init(content: Content, rect: CGRect, depth: Int, header: CGRect?, options: LayoutOptions) {
+        self.content = content
+        self.rect = rect
+        self.depth = depth
+        self.header = header
+        let height = min(depth == 0 ? options.header : options.headerInner, rect.height)
+        title = header ?? CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: height)
+    }
 
     public var node: Node? {
         if case .node(let node) = content {
@@ -35,8 +47,9 @@ public struct LayoutOptions: Equatable, Sendable {
     /// Every tile fits a label; children that would be smaller are merged.
     public var minTile: CGFloat = 30
     public var maxChildren = 96
-    public var header: CGFloat = 18
-    public var headerInner: CGFloat = 15
+    /// Title bands, tall enough to leave the name some air.
+    public var header: CGFloat = 22
+    public var headerInner: CGFloat = 19
     /// A directory is subdivided only if the body under its band has room
     /// for about three by three of the smallest tiles: depth follows the room
     /// on screen, not a fixed level count.
@@ -88,12 +101,14 @@ private func placeChildren(
             continue
         }
         guard case .node(let child) = item.content, child.isDir else {
-            tiles.append(Tile(content: item.content, rect: rect, depth: depth, header: nil))
+            tiles.append(Tile(
+                content: item.content, rect: rect, depth: depth, header: nil, options: options))
             continue
         }
         // No room for a band and a readable body: the tile stays whole.
         let header = headerBand(rect, depth: depth, options: options)
-        tiles.append(Tile(content: item.content, rect: rect, depth: depth, header: header))
+        tiles.append(Tile(
+            content: item.content, rect: rect, depth: depth, header: header, options: options))
         if let header {
             let body = CGRect(
                 x: rect.minX, y: header.maxY, width: rect.width,

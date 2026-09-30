@@ -19,14 +19,26 @@ enum Palette {
     static let background = Color(nsColor: .windowBackgroundColor)
     private static let surface = Color(nsColor: .textBackgroundColor)
 
-    /// A solid fill, so nested tiles never blend into each other's hue.
-    /// Deeper tiles carry a little more colour, so nesting reads without borders.
-    static func fill(_ kind: Kind, depth: Int, in environment: EnvironmentValues) -> Color {
-        let base = surface.resolve(in: environment)
-        let tint = color(kind).resolve(in: environment)
+    /// A tile's body: neutral, a shade further from the surface per level so
+    /// nesting still reads.
+    static func body(depth: Int, in environment: EnvironmentValues) -> Color {
+        mixed(Color(nsColor: .systemGray), 0.03 * Float(min(depth, 5)), in: environment)
+    }
+
+    /// A title band: the kind's colour, the one place it is shown.
+    static func title(_ kind: Kind, depth: Int, in environment: EnvironmentValues) -> Color {
+        let amount = (kind == .other ? 0.08 : 0.2) + 0.03 * Float(min(depth, 4))
         // The same tint reads stronger on a dark background.
         let scale: Float = environment.colorScheme == .dark ? 0.7 : 1
-        let amount = ((kind == .other ? 0.04 : 0.11) + 0.025 * Float(min(depth, 4))) * scale
+        return mixed(color(kind), amount * scale, in: environment)
+    }
+
+    /// Solid, so nested tiles never blend into each other's hue.
+    private static func mixed(_ tint: Color, _ amount: Float, in environment: EnvironmentValues)
+        -> Color
+    {
+        let base = surface.resolve(in: environment)
+        let tint = tint.resolve(in: environment)
         let mix = { (a: Float, b: Float) in a + (b - a) * amount }
         return Color(Color.Resolved(
             red: mix(base.red, tint.red), green: mix(base.green, tint.green),

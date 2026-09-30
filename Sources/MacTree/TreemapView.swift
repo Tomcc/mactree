@@ -81,25 +81,38 @@ private struct MosaicCanvas: View, Equatable {
         }
     }
 
-    /// Flat tiles; the gaps between them, in the window background, are what
-    /// separate them. One path per depth and kind keeps it to a handful of
-    /// draws; depth order matters, since children paint over their parent.
+    /// Flat tiles, separated by the gaps between them. Bodies are neutral and
+    /// only the title band carries the kind's colour; a thin top-left
+    /// highlight lifts each tile off its parent. One path per depth and colour
+    /// keeps it to a handful of draws; depth order matters, since children
+    /// paint over their parent's body.
     private func paintFills(_ context: inout GraphicsContext) {
-        var layers: [Int: [Kind: Path]] = [:]
+        var bodies: [Int: Path] = [:]
+        var titles: [Int: [Kind: Path]] = [:]
+        var highlights = Path()
         for tile in tiles {
             let kind: Kind
             switch tile.content {
             case .node(let node): kind = node.kind
             case .others(let parent, _): kind = parent.kind
             }
-            layers[tile.depth, default: [:]][kind, default: Path()].addRect(tile.rect)
+            bodies[tile.depth, default: Path()].addRect(tile.rect)
+            titles[tile.depth, default: [:]][kind, default: Path()].addRect(tile.title)
+            highlights.move(to: CGPoint(x: tile.rect.minX + 0.5, y: tile.rect.maxY))
+            highlights.addLine(to: CGPoint(x: tile.rect.minX + 0.5, y: tile.rect.minY + 0.5))
+            highlights.addLine(to: CGPoint(x: tile.rect.maxX, y: tile.rect.minY + 0.5))
         }
-        for depth in layers.keys.sorted() {
-            for (kind, path) in layers[depth] ?? [:] {
-                let fill = Palette.fill(kind, depth: depth, in: context.environment)
-                context.fill(path, with: .color(fill))
+        let environment = context.environment
+        for depth in bodies.keys.sorted() {
+            if let body = bodies[depth] {
+                context.fill(body, with: .color(Palette.body(depth: depth, in: environment)))
+            }
+            for (kind, path) in titles[depth] ?? [:] {
+                context.fill(path, with: .color(Palette.title(kind, depth: depth, in: environment)))
             }
         }
+        let dark = environment.colorScheme == .dark
+        context.stroke(highlights, with: .color(.white.opacity(dark ? 0.08 : 0.8)), lineWidth: 1)
     }
 
     /// "Small items" is many things too small to draw, hatched so it reads
@@ -142,8 +155,7 @@ private struct MosaicCanvas: View, Equatable {
     }
 
     private func paintLabel(_ context: inout GraphicsContext, _ tile: Tile) {
-        // A subdivided directory's name lives in its band, a leaf's at its top.
-        let owned = tile.header ?? tile.rect
+        let owned = tile.title
         let text: String
         let size: String
         switch tile.content {
@@ -161,12 +173,13 @@ private struct MosaicCanvas: View, Equatable {
         let sizeText = context.resolve(
             Text(size).font(.system(size: 11)).foregroundStyle(.secondary))
 
+        // A leaf may put its size below the band, so it owns the whole tile.
         var label = context
-        label.clip(to: Path(owned))
-        let padding: CGFloat = 5
+        label.clip(to: Path(tile.header ?? tile.rect))
+        let padding: CGFloat = 6
         let lineHeight: CGFloat = 14
         let origin = CGPoint(
-            x: owned.minX + padding, y: owned.minY + (tile.header == nil ? 3 : 1))
+            x: owned.minX + padding, y: owned.midY - name.measure(in: owned.size).height / 2)
         label.draw(name, at: origin, anchor: .topLeading)
         guard !size.isEmpty else {
             return
@@ -179,10 +192,9 @@ private struct MosaicCanvas: View, Equatable {
             if x > origin.x + nameWidth + padding {
                 label.draw(sizeText, at: CGPoint(x: x, y: origin.y), anchor: .topLeading)
             }
-        } else if tile.header == nil && owned.height >= lineHeight * 2 + 4 {
+        } else if tile.header == nil && tile.rect.maxY - owned.maxY >= lineHeight + 4 {
             label.draw(
-                sizeText, at: CGPoint(x: origin.x, y: origin.y + lineHeight),
-                anchor: .topLeading)
+                sizeText, at: CGPoint(x: origin.x, y: owned.maxY + 3), anchor: .topLeading)
         } else if owned.width - padding * 2 - nameWidth > sizeWidth + 8 {
             label.draw(
                 sizeText, at: CGPoint(x: origin.x + nameWidth + 6, y: origin.y),
