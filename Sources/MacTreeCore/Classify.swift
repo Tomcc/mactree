@@ -29,7 +29,7 @@ public enum Kind: CaseIterable, Sendable {
         case .git:
             "Files tracked by Git that could be restored"
         case .app:
-            "Applications, shown whole: trash one to uninstall it."
+            "Apps installed on your Mac"
         case .system:
             "System or toolchain files that shouldn\u{2019}t be deleted without advanced knowledge"
         case .other:
