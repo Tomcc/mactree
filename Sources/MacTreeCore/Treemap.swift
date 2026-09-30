@@ -41,15 +41,15 @@ public struct Tile: Sendable {
 
 public struct LayoutOptions: Equatable, Sendable {
     /// The gap between siblings, which is what separates them.
-    public var padding: CGFloat = 1
+    public var padding: CGFloat = 3
     /// Wider gaps between top-level directories, so that level reads first.
-    public var paddingOuter: CGFloat = 3
+    public var paddingOuter: CGFloat = 4
     /// Every tile fits a label; children that would be smaller are merged.
     public var minTile: CGFloat = 30
     public var maxChildren = 96
     /// Title bands, tall enough to leave the name some air.
-    public var header: CGFloat = 22
-    public var headerInner: CGFloat = 19
+    public var header: CGFloat = 24
+    public var headerInner: CGFloat = 21
     /// A directory is subdivided only if the body under its band has room
     /// for about three by three of the smallest tiles: depth follows the room
     /// on screen, not a fixed level count.

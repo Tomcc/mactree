@@ -73,7 +73,6 @@ private struct MosaicCanvas: View, Equatable {
     var body: some View {
         Canvas { context, _ in
             paintFills(&context)
-            paintHatch(&context)
             paintUnreadable(&context)
             for tile in tiles {
                 paintLabel(&context, tile)
@@ -90,6 +89,7 @@ private struct MosaicCanvas: View, Equatable {
         var bodies: [Int: Path] = [:]
         var titles: [Int: [Kind: Path]] = [:]
         var highlights = Path()
+        var shades = Path()
         for tile in tiles {
             let kind: Kind
             switch tile.content {
@@ -107,6 +107,13 @@ private struct MosaicCanvas: View, Equatable {
                 to: CGPoint(x: inner.minX + radius, y: inner.minY),
                 control: CGPoint(x: inner.minX, y: inner.minY))
             highlights.addLine(to: CGPoint(x: inner.maxX - radius, y: inner.minY))
+            // And the bevel's shade, down the right side and along the bottom.
+            shades.move(to: CGPoint(x: inner.maxX, y: inner.minY + radius))
+            shades.addLine(to: CGPoint(x: inner.maxX, y: inner.maxY - radius))
+            shades.addQuadCurve(
+                to: CGPoint(x: inner.maxX - radius, y: inner.maxY),
+                control: CGPoint(x: inner.maxX, y: inner.maxY))
+            shades.addLine(to: CGPoint(x: inner.minX + radius, y: inner.maxY))
         }
         let environment = context.environment
         context.fill(
@@ -122,31 +129,7 @@ private struct MosaicCanvas: View, Equatable {
         }
         let dark = environment.colorScheme == .dark
         context.stroke(highlights, with: .color(.white.opacity(dark ? 0.08 : 0.8)), lineWidth: 1)
-    }
-
-    /// "Small items" is many things too small to draw, hatched so it reads
-    /// as a crowd rather than one more file.
-    private func paintHatch(_ context: inout GraphicsContext) {
-        var region = Path()
-        for tile in tiles {
-            if case .others = tile.content {
-                region.addPath(rounded(tile.rect, tileRadius(tile)))
-            }
-        }
-        guard !region.isEmpty else {
-            return
-        }
-        var hatch = context
-        hatch.clip(to: region)
-        let bounds = region.boundingRect
-        var lines = Path()
-        var x = bounds.minX - bounds.height
-        while x < bounds.maxX {
-            lines.move(to: CGPoint(x: x, y: bounds.maxY))
-            lines.addLine(to: CGPoint(x: x + bounds.height, y: bounds.minY))
-            x += 5
-        }
-        hatch.stroke(lines, with: .color(.primary.opacity(0.12)), lineWidth: 1)
+        context.stroke(shades, with: .color(.black.opacity(dark ? 0.4 : 0.12)), lineWidth: 1)
     }
 
     /// A small orange corner: part of it could not be read.
@@ -177,17 +160,17 @@ private struct MosaicCanvas: View, Equatable {
         }
         let bold = tile.depth == 0 && tile.header != nil
         let name = context.resolve(
-            Text(text).font(.system(size: 11, weight: bold ? .semibold : .regular))
+            Text(text).font(.system(size: 12.5, weight: bold ? .semibold : .regular))
                 .foregroundStyle(.primary))
         let sizeText = context.resolve(
-            Text(size).font(.system(size: 11)).foregroundStyle(.secondary))
+            Text(size).font(.system(size: 12)).foregroundStyle(.secondary))
 
         // A leaf may put its size below the band, so it owns the whole tile.
         var label = context
         label.clip(to: Path(tile.header ?? tile.rect))
         // Clear of the corner's curve.
         let padding: CGFloat = 9
-        let lineHeight: CGFloat = 14
+        let lineHeight: CGFloat = 16
         let origin = CGPoint(
             x: owned.minX + padding, y: owned.midY - name.measure(in: owned.size).height / 2)
         label.draw(name, at: origin, anchor: .topLeading)
