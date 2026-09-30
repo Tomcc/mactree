@@ -75,6 +75,12 @@ struct MacTreeApp: App {
             }
             CommandGroup(after: .toolbar) {
                 Button("Refresh") { model.rescan() }.keyboardShortcut("r")
+                Toggle(
+                    "Show Free Space",
+                    isOn: Binding(
+                        get: { model.showsFreeSpace }, set: { model.showsFreeSpace = $0 })
+                )
+                .disabled(!model.canShowFreeSpace)
             }
         }
     }

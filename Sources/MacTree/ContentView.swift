@@ -97,6 +97,11 @@ struct ContentView: View {
             .disabled(!model.canGoUp)
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            Toggle(isOn: freeSpaceShown) {
+                Label("Free Space", systemImage: "square.dashed")
+            }
+            .help("Show the disk\u{2019}s free space beside its contents")
+            .disabled(!model.canShowFreeSpace)
             Button {
                 model.showingComputer = true
             } label: {
@@ -120,6 +125,10 @@ struct ContentView: View {
             .tint(.red)
             .disabled(model.emptyingTrash)
         }
+    }
+
+    private var freeSpaceShown: Binding<Bool> {
+        Binding(get: { model.showsFreeSpace }, set: { model.showsFreeSpace = $0 })
     }
 
     /// The Trash's size, when the scan could read it.
@@ -227,16 +236,15 @@ private struct CrumbIcon: View {
 
 private struct Legend: View {
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             ForEach(Kind.legend, id: \.self) { kind in
-                HStack(spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2).fill(Palette.color(kind))
-                        .frame(width: 9, height: 9)
-                    Text(kind.label)
-                }
+                Text(kind.label)
+                    .foregroundStyle(Palette.color(kind))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Palette.color(kind).opacity(0.18)))
             }
         }
-        .foregroundStyle(.secondary)
     }
 }
 

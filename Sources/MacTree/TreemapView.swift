@@ -22,7 +22,9 @@ struct TreemapView: View {
                 } else {
                     MosaicCanvas(
                         tiles: tiles, version: model.treeVersion,
-                        previews: Icons.shared.thumbnailsVersion).equatable()
+                        previews: Icons.shared.thumbnailsVersion,
+                        free: model.current.flatMap { model.freeSpace(of: $0, for: size) }
+                    ).equatable()
                     RingsCanvas(tiles: tiles, hovered: model.hovered, selected: model.selected)
                 }
             }
@@ -78,6 +80,8 @@ private struct Zoom {
     /// The parent's mosaic and the child's; the child is drawn on top.
     let outer: [Tile]
     let inner: [Tile]
+    /// Only a disk's mosaic has free space, and only the parent can be the disk.
+    let outerFree: AppModel.FreeSpace?
     /// The child's tile in the parent's mosaic.
     let target: CGRect
     /// Animated: false shows the parent, true the child filling the window.
@@ -89,12 +93,12 @@ extension TreemapView {
         let bounds = CGRect(origin: .zero, size: size)
         MosaicCanvas(
             tiles: zoom.outer, version: model.treeVersion,
-            previews: Icons.shared.thumbnailsVersion).equatable()
+            previews: Icons.shared.thumbnailsVersion, free: zoom.outerFree).equatable()
             .frame(width: size.width, height: size.height)
             .placed(in: zoom.zoomedIn ? expanded(bounds, until: zoom.target) : bounds, of: size)
         MosaicCanvas(
             tiles: zoom.inner, version: model.treeVersion,
-            previews: Icons.shared.thumbnailsVersion).equatable()
+            previews: Icons.shared.thumbnailsVersion, free: nil).equatable()
             .frame(width: size.width, height: size.height)
             .placed(in: zoom.zoomedIn ? bounds : zoom.target, of: size)
             .opacity(zoom.zoomedIn ? 1 : 0)
@@ -125,7 +129,10 @@ extension TreemapView {
             return
         }
         let childTiles = goingIn ? tiles : model.tiles(of: child, for: size)
-        zoom = Zoom(outer: parentTiles, inner: childTiles, target: target, zoomedIn: !goingIn)
+        zoom = Zoom(
+            outer: parentTiles, inner: childTiles,
+            outerFree: model.freeSpace(of: parent, for: size), target: target,
+            zoomedIn: !goingIn)
         withAnimation(.easeInOut(duration: 0.35)) {
             zoom?.zoomedIn = goingIn
         } completion: {
@@ -158,9 +165,10 @@ private struct MosaicCanvas: View, Equatable {
     nonisolated let version: Int
     /// Previews arrive after the first paint.
     nonisolated let previews: Int
+    nonisolated let free: AppModel.FreeSpace?
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.version == rhs.version && lhs.previews == rhs.previews
+        lhs.version == rhs.version && lhs.previews == rhs.previews && lhs.free == rhs.free
             && lhs.tiles.count == rhs.tiles.count
             && zip(lhs.tiles, rhs.tiles).allSatisfy { $0.rect == $1.rect }
     }
@@ -171,6 +179,9 @@ private struct MosaicCanvas: View, Equatable {
             paintUnreadable(&context)
             for tile in tiles {
                 paintLabel(&context, tile)
+            }
+            if let free {
+                paintCarved(&context, "Free space", bytes: free.bytes, in: free.rect)
             }
         }
     }
@@ -372,19 +383,21 @@ private struct MosaicCanvas: View, Equatable {
         let heights = lines.map { $0.measure(in: unbounded).height }
         let textHeight = heights.reduce(0, +) + (twoLines ? 2 : 0)
         var y = tile.rect.midY - textHeight / 2
-        // Files and packages show their preview or icon above the name, as
-        // in Finder, when there is room for one; folder blocks have none.
-        let icon = min(64, room, tile.rect.height - textHeight - 20)
+        // Packages show their icon above the name, and files a small preview
+        // (bigger ones get noisy), when there is room; folder blocks have none.
+        let icon = min(node.isPackage ? 64 : 25, room, tile.rect.height - textHeight - 20)
         if !node.isDir || node.isPackage, icon >= 20 {
             let top = tile.rect.midY - (icon + 6 + textHeight) / 2
-            let boxWidth = min(room, icon * 2)
-            let image = node.isPackage
-                ? Icons.shared.finderIcon(node.path) : Icons.shared.preview(node.path)
-            context.draw(
-                Image(nsImage: image),
-                // Up to twice as wide as tall, so a video's frame isn't a sliver.
-                in: fitted(image.size, in: CGRect(
-                    x: tile.rect.midX - boxWidth / 2, y: top, width: boxWidth, height: icon)))
+            let box = CGRect(x: tile.rect.midX - icon / 2, y: top, width: icon, height: icon)
+            if node.isPackage {
+                context.draw(Image(nsImage: Icons.shared.finderIcon(node.path)), in: box)
+            } else {
+                // Lifted off the tile, as Finder does its thumbnails.
+                var lifted = context
+                lifted.addFilter(.shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5))
+                let image = Icons.shared.preview(node.path)
+                lifted.draw(Image(nsImage: image), in: fitted(image.size, in: box))
+            }
             y = top + icon + 6
         }
         for (line, height) in zip(lines, heights) {
@@ -407,9 +420,18 @@ private struct MosaicCanvas: View, Equatable {
         }
     }
 
+    private func paintSmallItemsLabel(_ context: inout GraphicsContext, _ tile: Tile) {
+        guard case .others(_, let bytes, let count) = tile.content else {
+            return
+        }
+        paintCarved(&context, smallItemsTitle(count), bytes: bytes, in: tile.rect)
+    }
+
     /// Centred and italic, with its size below if there is room: carved into
     /// the parent, like letterpress.
-    private func paintSmallItemsLabel(_ context: inout GraphicsContext, _ tile: Tile) {
+    private func paintCarved(
+        _ context: inout GraphicsContext, _ title: String, bytes: UInt64, in rect: CGRect
+    ) {
         let dark = context.environment.colorScheme == .dark
         // Light from above: in dark mode the ink is paler than the surface
         // and the cut's shadow shows above it; in light mode, a highlight below.
@@ -418,23 +440,19 @@ private struct MosaicCanvas: View, Equatable {
         let edgeOffset: CGFloat = dark ? -1 : 1
         let font = Font.system(size: 12.5).italic()
         // Too narrow for the phrase: an ellipsis still says "more in here".
-        guard case .others(_, _, let count) = tile.content else {
-            return
-        }
-        let title = smallItemsTitle(count)
         let measured = context.resolve(Text(title).font(font))
             .measure(in: .init(width: 1000, height: 100))
-        guard tile.rect.height >= measured.height else {
+        guard rect.height >= measured.height else {
             return
         }
-        let fits = measured.width <= tile.rect.width - 8
+        let fits = measured.width <= rect.width - 8
         var lines = [Text(fits ? title : "\u{2026}").font(font)]
-        if fits && tile.rect.height >= 40 {
-            lines.append(Text(formatBytes(tile.content.bytes)).font(.system(size: 12)))
+        if fits && rect.height >= 40 {
+            lines.append(Text(formatBytes(bytes)).font(.system(size: 12)))
         }
         var label = context
-        label.clip(to: Path(tile.rect))
-        let center = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
+        label.clip(to: Path(rect))
+        let center = CGPoint(x: rect.midX, y: rect.midY)
         for (color, offset) in [(edge, edgeOffset), (ink, 0)] {
             if lines.count == 1 {
                 label.draw(

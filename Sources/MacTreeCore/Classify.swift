@@ -175,7 +175,7 @@ extension Node {
 }
 
 /// Whether `path` is where a volume is mounted.
-func isVolumeRoot(_ path: String) -> Bool {
+public func isVolumeRoot(_ path: String) -> Bool {
     var info = statfs()
     guard statfs(path, &info) == 0 else {
         return false

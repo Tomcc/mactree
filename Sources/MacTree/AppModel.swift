@@ -31,6 +31,10 @@ final class AppModel {
     /// Blocks opened in place with a double-click, until closed again.
     private(set) var unpacked: Set<ObjectIdentifier> = []
     var showingComputer = false
+    /// The disk's free space drawn beside its contents, when a disk is scanned.
+    var showsFreeSpace = false
+    /// Whether the scan is of a whole disk, where free space makes sense.
+    private(set) var scannedDisk = false
     var error: String?
 
     @ObservationIgnored private var layoutCache: (key: LayoutKey, tiles: [Tile])?
@@ -40,6 +44,13 @@ final class AppModel {
         let node: ObjectIdentifier
         let version: Int
         let unpacked: Set<ObjectIdentifier>
+        let free: FreeSpace?
+    }
+
+    /// Background, not a tile: nothing to click, just where the free space would go.
+    struct FreeSpace: Equatable {
+        let rect: CGRect
+        let bytes: UInt64
     }
 
     /// `showing` is where to land; by default a rescan stays where it was.
@@ -80,6 +91,7 @@ final class AppModel {
         // Keyed by node, so a fresh tree starts packed.
         unpacked = []
         enclosing = enclosingFolders(of: tree.path)
+        scannedDisk = isVolumeRoot(tree.path)
         // A folder gone since the last scan lands on what is left of its path.
         current = wasAt.flatMap { find($0, in: tree, orNearest: true) } ?? tree
         selected = nil
@@ -120,7 +132,7 @@ final class AppModel {
         }
         let key = LayoutKey(
             size: size, node: ObjectIdentifier(current), version: treeVersion,
-            unpacked: unpacked)
+            unpacked: unpacked, free: freeSpace(of: current, for: size))
         if let cache = layoutCache, cache.key == key {
             return cache.tiles
         }
@@ -133,7 +145,30 @@ final class AppModel {
     func tiles(of node: Node, for size: CGSize) -> [Tile] {
         var options = LayoutOptions()
         options.unpacked = unpacked
-        return layout(node, in: CGRect(origin: .zero, size: size), options: options)
+        let area = diskSplit(of: node, for: size)?.used ?? CGRect(origin: .zero, size: size)
+        return layout(node, in: area, options: options)
+    }
+
+    var canShowFreeSpace: Bool {
+        scannedDisk && current === root
+    }
+
+    func freeSpace(of node: Node, for size: CGSize) -> FreeSpace? {
+        diskSplit(of: node, for: size)?.free
+    }
+
+    /// Only the disk's own mosaic has room for its free space, sized like a tile.
+    private func diskSplit(of node: Node, for size: CGSize) -> (used: CGRect, free: FreeSpace)? {
+        guard showsFreeSpace, scannedDisk, node === root, let disk, disk.available > 0 else {
+            return nil
+        }
+        let used = Double(node.bytes)
+        let free = Double(disk.available)
+        // Largest first, as squarify expects.
+        let rects = squarify(
+            [max(used, free), min(used, free)], in: CGRect(origin: .zero, size: size))
+        let (usedRect, freeRect) = used >= free ? (rects[0], rects[1]) : (rects[1], rects[0])
+        return (usedRect, FreeSpace(rect: freeRect, bytes: disk.available))
     }
 
     /// Going back up to where you came from always works, even into a
