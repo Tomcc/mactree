@@ -14,8 +14,33 @@ I didn't like the others! This one tries to blend in better with MacOS' design.
 - Recommends deletable files (but don't trust me on it)
 - File icons
 - Doesn't look terrible
+- CLI Mode. Use `mactree <your path>` to open Mactree from your terminal
 
 # Screenshots
+
+Full Disk View
+
+![Full Disk View](assets/full-disk.png)
+
+In its Ultrawide glory (tree depth adapts to your screen)
+
+![Ultrawide](assets/ultrawide.png)
+
+Dark mode
+
+![Dark mode](assets/dark-mode.png)
+
+File Picker
+
+![File Picker](assets/file-picker.png)
+
+Yay small build files
+
+![Build files](assets/build-files.png)
+
+Find big apps easily
+
+![Apps](assets/apps.png)
 
 # Install
 
