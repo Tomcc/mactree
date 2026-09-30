@@ -127,8 +127,9 @@ private struct StatusBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if let node = model.hovered ?? model.selected ?? model.current {
-                ForEach(Array(node.ancestry.enumerated()), id: \.offset) { index, crumb in
+            if let content = model.hovered ?? model.selected ?? model.current.map({ .node($0) }) {
+                ForEach(Array(content.owner.ancestry.enumerated()), id: \.offset) {
+                    index, crumb in
                     if index > 0 {
                         Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
                     }
@@ -139,8 +140,13 @@ private struct StatusBar: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Text(formatBytes(node.bytes)).foregroundStyle(.secondary).padding(.leading, 6)
-                if let reclaim = node.reclaim {
+                if case .others = content {
+                    Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
+                    Text("small items").italic()
+                }
+                Text(formatBytes(content.bytes)).foregroundStyle(.secondary)
+                    .padding(.leading, 6)
+                if let reclaim = content.node?.reclaim {
                     Text("· \(reclaim.label)").foregroundStyle(.secondary)
                 }
             }

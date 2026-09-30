@@ -20,24 +20,30 @@ struct TreemapView: View {
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let point):
-                    model.hovered = hit(tiles, at: point)?.node
+                    model.hovered = hit(tiles, at: point)?.content
                 case .ended:
                     model.hovered = nil
                 }
             }
             .onTapGesture(coordinateSpace: .local) { point in
-                let node = hit(tiles, at: point)?.node
+                let content = hit(tiles, at: point)?.content
                 // Double-click opens; a tap gesture of count 2 would delay
-                // every single click while it waits.
-                if let node, NSApp.currentEvent?.clickCount == 2 {
-                    model.open(node)
+                // every single click while it waits. Small items open their
+                // folder, where they get room of their own.
+                if let content, NSApp.currentEvent?.clickCount == 2 {
+                    model.open(content.owner)
                 } else {
-                    model.selected = node
+                    model.selected = content
                 }
             }
             .contextMenu {
-                if let node = model.hovered {
+                switch model.hovered {
+                case .node(let node):
                     NodeMenu(model: model, node: node)
+                case .others(let parent, _):
+                    SmallItemsMenu(model: model, parent: parent)
+                case nil:
+                    EmptyView()
                 }
             }
         }
@@ -57,6 +63,18 @@ struct NodeMenu: View {
         Divider()
         Button("Move to Trash") { model.moveToTrash(node) }
             .disabled(!model.canTrash(node))
+    }
+}
+
+struct SmallItemsMenu: View {
+    let model: AppModel
+    let parent: Node
+
+    var body: some View {
+        if parent !== model.current {
+            Button("Open \u{201C}\(parent.displayName)\u{201D}") { model.open(parent) }
+        }
+        Button("Show in Finder") { model.revealInFinder(parent) }
     }
 }
 
@@ -91,14 +109,13 @@ private struct MosaicCanvas: View, Equatable {
         var highlights = Path()
         var shades = Path()
         for tile in tiles {
-            let kind: Kind
-            switch tile.content {
-            case .node(let node): kind = node.kind
-            case .others(let parent, _): kind = parent.kind
-            }
             let radius = tileRadius(tile)
             bodies[tile.depth, default: Path()].addPath(rounded(tile.rect, radius))
-            titles[tile.depth, default: [:]][kind, default: Path()].addPath(titleShape(tile))
+            // Small items are a flat plate, so they never pass for a file.
+            guard let node = tile.node else {
+                continue
+            }
+            titles[tile.depth, default: [:]][node.kind, default: Path()].addPath(titleShape(tile))
             // Up the left side and along the top, following the corner.
             let inner = tile.rect.insetBy(dx: 0.5, dy: 0.5)
             highlights.move(to: CGPoint(x: inner.minX, y: inner.maxY - radius))
@@ -147,17 +164,13 @@ private struct MosaicCanvas: View, Equatable {
     }
 
     private func paintLabel(_ context: inout GraphicsContext, _ tile: Tile) {
-        let owned = tile.title
-        let text: String
-        let size: String
-        switch tile.content {
-        case .node(let node):
-            text = node.displayName
-            size = formatBytes(node.bytes)
-        case .others(_, let bytes):
-            text = "small items"
-            size = formatBytes(bytes)
+        guard let node = tile.node else {
+            paintSmallItemsLabel(&context, tile)
+            return
         }
+        let owned = tile.title
+        let text = node.displayName
+        let size = formatBytes(node.bytes)
         let bold = tile.depth == 0 && tile.header != nil
         let name = context.resolve(
             Text(text).font(.system(size: 12.5, weight: bold ? .semibold : .regular))
@@ -174,9 +187,6 @@ private struct MosaicCanvas: View, Equatable {
         let origin = CGPoint(
             x: owned.minX + padding, y: owned.midY - name.measure(in: owned.size).height / 2)
         label.draw(name, at: origin, anchor: .topLeading)
-        guard !size.isEmpty else {
-            return
-        }
         let nameWidth = name.measure(in: owned.size).width
         let sizeWidth = sizeText.measure(in: owned.size).width
         if tile.header != nil && tile.depth == 0 {
@@ -194,16 +204,38 @@ private struct MosaicCanvas: View, Equatable {
                 anchor: .topLeading)
         }
     }
+
+    /// Centred and italic, with its size below if there is room.
+    private func paintSmallItemsLabel(_ context: inout GraphicsContext, _ tile: Tile) {
+        let name = context.resolve(
+            Text("small items").font(.system(size: 12.5).italic()).foregroundStyle(.secondary))
+        let size = context.resolve(
+            Text(formatBytes(tile.content.bytes)).font(.system(size: 12))
+                .foregroundStyle(.tertiary))
+        // Too narrow for the whole phrase: the status bar still names it.
+        guard name.measure(in: tile.rect.size).width <= tile.rect.width - 8 else {
+            return
+        }
+        var label = context
+        label.clip(to: Path(tile.rect))
+        let center = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
+        guard tile.rect.height >= 40 else {
+            label.draw(name, at: center, anchor: .center)
+            return
+        }
+        label.draw(name, at: center, anchor: .bottom)
+        label.draw(size, at: CGPoint(x: center.x, y: center.y + 2), anchor: .top)
+    }
 }
 
 private struct RingsCanvas: View {
     let tiles: [Tile]
-    let hovered: Node?
-    let selected: Node?
+    let hovered: Tile.Content?
+    let selected: Tile.Content?
 
     var body: some View {
         Canvas { context, _ in
-            if let hovered, hovered !== selected, let tile = tile(of: hovered) {
+            if let hovered, hovered != selected, let tile = tile(of: hovered) {
                 context.stroke(
                     rounded(tile.rect.insetBy(dx: 0.5, dy: 0.5), tileRadius(tile)),
                     with: .color(.primary.opacity(0.4)), lineWidth: 1)
@@ -217,8 +249,8 @@ private struct RingsCanvas: View {
         .allowsHitTesting(false)
     }
 
-    private func tile(of node: Node) -> Tile? {
-        tiles.first { $0.node === node }
+    private func tile(of content: Tile.Content) -> Tile? {
+        tiles.first { $0.content == content }
     }
 }
 

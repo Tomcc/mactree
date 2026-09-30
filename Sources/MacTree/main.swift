@@ -44,24 +44,24 @@ struct MacTreeApp: App {
                 Button("Choose Folder…", action: chooseFolder).keyboardShortcut("o")
                 Divider()
                 Button("Move to Trash") {
-                    if let node = model.selected {
+                    if let node = model.selected?.node {
                         model.moveToTrash(node)
                     }
                 }
                 .keyboardShortcut(.delete)
-                .disabled(model.selected.map { !model.canTrash($0) } ?? true)
+                .disabled(model.selected?.node.map { !model.canTrash($0) } ?? true)
             }
             CommandMenu("Go") {
                 Button("Enclosing Folder") { model.up() }
                     .keyboardShortcut(.upArrow)
                     .disabled(model.current?.parent == nil)
                 Button("Open Selection") {
-                    if let node = model.selected {
+                    if let node = model.selected?.owner {
                         model.open(node)
                     }
                 }
                 .keyboardShortcut(.downArrow)
-                .disabled(model.selected?.isDir != true)
+                .disabled(model.selected?.owner.isDir != true)
             }
             CommandGroup(after: .toolbar) {
                 Button("Refresh") { model.rescan() }.keyboardShortcut("r")

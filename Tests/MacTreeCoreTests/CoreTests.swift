@@ -205,3 +205,18 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(formatBytes(15_200_000) == "15 MB")
     #expect(formatCount(3_900_000) == "3.9M")
 }
+
+@Test func aFolderOfOnlyDustStaysWhole() {
+    let root = Node(name: "/r", isDir: true)
+    let objects = Node(name: "objects", isDir: true)
+    for index in 0..<256 {
+        let bucket = Node(name: "\(index)", isDir: true)
+        bucket.adopt(Node(name: "pack", isDir: false, bytes: 10))
+        objects.adopt(bucket)
+    }
+    root.adopt(objects)
+    root.aggregate()
+    let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 800, height: 500), options: LayoutOptions())
+    #expect(tiles.count == 1, "subdividing would only show one small items tile")
+    #expect(tiles.first?.node === objects && tiles.first?.header == nil)
+}

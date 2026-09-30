@@ -16,8 +16,9 @@ final class AppModel {
     private(set) var root: Node?
     /// The directory the mosaic draws.
     private(set) var current: Node?
-    var selected: Node?
-    var hovered: Node?
+    /// Tile contents rather than nodes, so small items can be pointed at too.
+    var selected: Tile.Content?
+    var hovered: Tile.Content?
     private(set) var disk: DiskSpace?
     /// Bumped whenever the tree changes shape, to invalidate the layout.
     private(set) var treeVersion = 0
@@ -119,7 +120,7 @@ final class AppModel {
         guard let parent = current?.parent else {
             return
         }
-        selected = current
+        selected = current.map { .node($0) }
         current = parent
     }
 
@@ -150,7 +151,8 @@ final class AppModel {
         if let current, current.isDescendant(of: node) {
             self.current = parent
         }
-        if selected?.isDescendant(of: node) == true {
+        // The parent's small items change too, so only other folders keep theirs.
+        if let owner = selected?.owner, owner.isDescendant(of: node) || owner === parent {
             selected = nil
         }
         hovered = nil
