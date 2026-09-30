@@ -20,6 +20,24 @@ public enum Kind: CaseIterable, Sendable {
         case .other: "Other"
         }
     }
+
+    /// What the kind means for deleting, for the legend's tooltips.
+    public var summary: String {
+        switch self {
+        case .reclaimable:
+            "Caches, build output, package stores, logs, temporary files and the Trash: "
+                + "usually safe to delete, since they come back when needed."
+        case .git:
+            "Tracked in a Git repository: once pushed, a copy lives elsewhere too."
+        case .app:
+            "Applications, shown whole: trash one to uninstall it."
+        case .system:
+            "Library folders and dot-folders, owned by macOS and your tools. Shown closed "
+                + "unless they hold reclaimable space; double-click one to look inside."
+        case .other:
+            "Your own files, with no copy elsewhere that MacTree knows of."
+        }
+    }
 }
 
 /// Why a directory's space can be had back.

@@ -254,6 +254,7 @@ private struct Legend: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 1)
                     .background(Capsule().fill(Palette.color(kind)))
+                    .help(kind.summary)
             }
         }
     }
