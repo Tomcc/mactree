@@ -201,13 +201,26 @@ private struct MosaicCanvas: View, Equatable {
         var label = context
         let area = tile.header ?? tile.rect
         label.clip(to: Path(area))
-        if origin.x + max(nameWidth, sizeBelow ? sizeWidth : 0) > area.maxX - 4 {
+        if origin.x + nameWidth > area.maxX - 4 {
             fadeOut(&label, area)
         }
         label.draw(name, at: origin, anchor: .topLeading)
         if sizeBelow {
-            label.draw(
-                sizeText, at: CGPoint(x: origin.x, y: owned.maxY + 3), anchor: .topLeading)
+            // A folder too small to open shows what it holds, centred in its
+            // body, so it doesn't pass for a whole thing.
+            let body = CGRect(
+                x: tile.rect.minX, y: owned.maxY, width: tile.rect.width,
+                height: tile.rect.maxY - owned.maxY)
+            let items = context.resolve(
+                Text("\(formatCount(node.children.count)) items \u{00B7} \(size)")
+                    .font(.system(size: 12)).foregroundStyle(.secondary))
+            let room = body.width - padding * 2
+            let center = CGPoint(x: body.midX, y: body.midY)
+            if items.measure(in: unbounded).width <= room {
+                label.draw(items, at: center, anchor: .center)
+            } else if sizeWidth <= room {
+                label.draw(sizeText, at: center, anchor: .center)
+            }
         } else if sizeBeside {
             label.draw(
                 sizeText, at: CGPoint(x: origin.x + nameWidth + 6, y: origin.y),
