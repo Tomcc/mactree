@@ -391,11 +391,14 @@ private struct MosaicCanvas: View, Equatable {
     }
 
     /// Centred and italic, with its size below if there is room: carved into
-    /// the parent, dark with a light edge below, like letterpress.
+    /// the parent, like letterpress.
     private func paintSmallItemsLabel(_ context: inout GraphicsContext, _ tile: Tile) {
         let dark = context.environment.colorScheme == .dark
-        let ink = Color.black.opacity(dark ? 0.9 : 0.4)
-        let edge = Color.white.opacity(dark ? 0.22 : 0.9)
+        // Light from above: in dark mode the ink is paler than the surface
+        // and the cut's shadow shows above it; in light mode, a highlight below.
+        let ink = dark ? Color.white.opacity(0.45) : Color.black.opacity(0.4)
+        let edge = dark ? Color.black.opacity(0.8) : Color.white.opacity(0.9)
+        let edgeOffset: CGFloat = dark ? -1 : 1
         let font = Font.system(size: 12.5).italic()
         // Too narrow for the phrase: an ellipsis still says "more in here".
         guard case .others(_, _, let count) = tile.content else {
@@ -415,7 +418,7 @@ private struct MosaicCanvas: View, Equatable {
         var label = context
         label.clip(to: Path(tile.rect))
         let center = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
-        for (color, offset) in [(edge, 1.0), (ink, 0.0)] {
+        for (color, offset) in [(edge, edgeOffset), (ink, 0)] {
             if lines.count == 1 {
                 label.draw(
                     lines[0].foregroundStyle(color), at: CGPoint(x: center.x, y: center.y + offset),
