@@ -16,6 +16,12 @@ struct ContentView: View {
         // The title is centred instead, as a principal item.
         .toolbar(removing: .title)
         .task { await model.watchFreeSpace() }
+        .onReceive(DistributedNotificationCenter.default().publisher(for: .openFolder)) {
+            if let path = $0.object as? String {
+                model.showingComputer = false
+                model.scan(path)
+            }
+        }
         .sheet(
             isPresented: Binding(
                 get: { model.showingComputer }, set: { model.showingComputer = $0 })
