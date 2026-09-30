@@ -178,24 +178,37 @@ private struct MosaicCanvas: View, Equatable {
         let sizeText = context.resolve(
             Text(size).font(.system(size: 12)).foregroundStyle(.secondary))
 
-        // A leaf may put its size below the band, so it owns the whole tile.
-        // Cut off short of the right edge, so text never touches it.
-        var label = context
-        let area = tile.header ?? tile.rect
-        label.clip(to: Path(CGRect(
-            x: area.minX, y: area.minY, width: max(area.width - 4, 0), height: area.height)))
         // Clear of the corner's curve.
         let padding: CGFloat = 9
         let lineHeight: CGFloat = 16
-        let origin = CGPoint(
-            x: owned.minX + padding, y: owned.midY - name.measure(in: owned.size).height / 2)
+        let unbounded = CGSize(width: 10_000, height: 100)
+        let nameSize = name.measure(in: unbounded)
+        let nameWidth = nameSize.width
+        let sizeWidth = sizeText.measure(in: unbounded).width
+        let origin = CGPoint(x: owned.minX + padding, y: owned.midY - nameSize.height / 2)
+        let sizeBelow = tile.header == nil && tile.rect.maxY - owned.maxY >= lineHeight + 4
+        let sizeBeside = !sizeBelow && owned.width - padding * 2 - nameWidth > sizeWidth + 8
+
+        // A leaf may put its size below the band, so it owns the whole tile.
+        var label = context
+        let area = tile.header ?? tile.rect
+        label.clip(to: Path(area))
+        // Text too long for the tile fades out 4 pt short of its right edge.
+        let end = area.maxX - 4
+        if origin.x + max(nameWidth, sizeBelow ? sizeWidth : 0) > end {
+            label.clipToLayer { mask in
+                mask.fill(
+                    Path(area),
+                    with: .linearGradient(
+                        Gradient(colors: [.black, .clear]),
+                        startPoint: CGPoint(x: end - 15, y: 0), endPoint: CGPoint(x: end, y: 0)))
+            }
+        }
         label.draw(name, at: origin, anchor: .topLeading)
-        let nameWidth = name.measure(in: owned.size).width
-        let sizeWidth = sizeText.measure(in: owned.size).width
-        if tile.header == nil && tile.rect.maxY - owned.maxY >= lineHeight + 4 {
+        if sizeBelow {
             label.draw(
                 sizeText, at: CGPoint(x: origin.x, y: owned.maxY + 3), anchor: .topLeading)
-        } else if owned.width - padding * 2 - nameWidth > sizeWidth + 8 {
+        } else if sizeBeside {
             label.draw(
                 sizeText, at: CGPoint(x: origin.x + nameWidth + 6, y: origin.y),
                 anchor: .topLeading)
