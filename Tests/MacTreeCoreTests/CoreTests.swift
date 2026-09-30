@@ -237,7 +237,7 @@ func child(_ node: Node, _ names: String...) -> Node {
         let area = CGRect(x: 0, y: 0, width: Double(random() % 1200 + 200), height: 500)
         let tiles = layout(root, in: area, options: options)
         let covered = tiles.reduce(0) { sum, tile in
-            let raw = tile.rect.insetBy(dx: -options.padding, dy: -options.padding)
+            let raw = tile.rect.insetBy(dx: -options.rootPadding, dy: -options.rootPadding)
             return sum + raw.width * raw.height
         }
         // Small items thinner than the gaps vanish, but only as a gap-thin sliver.
