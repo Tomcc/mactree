@@ -5,8 +5,9 @@ cd "$(dirname "$0")/.."
 swift build -c release
 app=build/MacTree.app
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp .build/release/MacTree "$app/Contents/MacOS/MacTree"
+cp Resources/AppIcon.icns "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -20,8 +21,9 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>0.1</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>NSHighResolutionCapable</key><true/>
-    <key>NSAppleEventsUsageDescription</key><string>MacTree asks Finder to empty the Trash.</string>
+    <key>NSAppleEventsUsageDescription</key><string>MacTree asks Finder to empty the Trash and show Get Info.</string>
 </dict>
 </plist>
 PLIST
