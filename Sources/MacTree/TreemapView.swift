@@ -109,12 +109,13 @@ private struct MosaicCanvas: View, Equatable {
         var highlights = Path()
         var shades = Path()
         for tile in tiles {
-            let radius = tileRadius(tile)
-            bodies[tile.depth, default: Path()].addPath(rounded(tile.rect, radius))
-            // Small items are a flat plate, so they never pass for a file.
+            // Small items are no tile at all, just a label carved into the
+            // parent, so they never pass for a file.
             guard let node = tile.node else {
                 continue
             }
+            let radius = tileRadius(tile)
+            bodies[tile.depth, default: Path()].addPath(rounded(tile.rect, radius))
             titles[tile.depth, default: [:]][node.kind, default: Path()].addPath(titleShape(tile))
             // Up the left side and along the top, following the corner.
             let inner = tile.rect.insetBy(dx: 0.5, dy: 0.5)
@@ -223,31 +224,41 @@ private struct MosaicCanvas: View, Equatable {
         }
     }
 
-    /// Centred and italic, with its size below if there is room.
+    /// Centred and italic, with its size below if there is room: carved into
+    /// the parent, dark with a light edge below, like letterpress.
     private func paintSmallItemsLabel(_ context: inout GraphicsContext, _ tile: Tile) {
+        let dark = context.environment.colorScheme == .dark
+        let ink = Color.black.opacity(dark ? 0.9 : 0.4)
+        let edge = Color.white.opacity(dark ? 0.22 : 0.9)
         let font = Font.system(size: 12.5).italic()
-        var name = context.resolve(Text("small items").font(font).foregroundStyle(.secondary))
-        let size = context.resolve(
-            Text(formatBytes(tile.content.bytes)).font(.system(size: 12))
-                .foregroundStyle(.tertiary))
         // Too narrow for the phrase: an ellipsis still says "more in here".
-        let measured = name.measure(in: .init(width: 1000, height: 100))
+        let measured = context.resolve(Text("small items").font(font))
+            .measure(in: .init(width: 1000, height: 100))
         guard tile.rect.height >= measured.height else {
             return
         }
         let fits = measured.width <= tile.rect.width - 8
-        if !fits {
-            name = context.resolve(Text("\u{2026}").font(font).foregroundStyle(.secondary))
+        var lines = [Text(fits ? "small items" : "\u{2026}").font(font)]
+        if fits && tile.rect.height >= 40 {
+            lines.append(Text(formatBytes(tile.content.bytes)).font(.system(size: 12)))
         }
         var label = context
         label.clip(to: Path(tile.rect))
         let center = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
-        guard fits, tile.rect.height >= 40 else {
-            label.draw(name, at: center, anchor: .center)
-            return
+        for (color, offset) in [(edge, 1.0), (ink, 0.0)] {
+            if lines.count == 1 {
+                label.draw(
+                    lines[0].foregroundStyle(color), at: CGPoint(x: center.x, y: center.y + offset),
+                    anchor: .center)
+            } else {
+                label.draw(
+                    lines[0].foregroundStyle(color), at: CGPoint(x: center.x, y: center.y + offset),
+                    anchor: .bottom)
+                label.draw(
+                    lines[1].foregroundStyle(color),
+                    at: CGPoint(x: center.x, y: center.y + 2 + offset), anchor: .top)
+            }
         }
-        label.draw(name, at: center, anchor: .bottom)
-        label.draw(size, at: CGPoint(x: center.x, y: center.y + 2), anchor: .top)
     }
 }
 
