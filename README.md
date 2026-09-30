@@ -44,7 +44,9 @@ Find big apps easily
 
 # Install
 
-Needs macOS 15 or later. Open `MacTree.dmg` and drag MacTree into Applications.
+Needs macOS 15 or later. Download
+[MacTree.dmg](https://github.com/Tomcc/mactree/releases/latest/download/MacTree.dmg), open it
+and drag MacTree into Applications.
 
 MacTree › Install Command Line Tool… adds `mactree [folder]`, which opens MacTree there.
 
