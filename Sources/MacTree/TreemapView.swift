@@ -26,14 +26,22 @@ struct TreemapView: View {
                 }
             }
             .onTapGesture(coordinateSpace: .local) { point in
-                let content = hit(tiles, at: point)?.content
+                if let tile = tiles.last(where: { $0.isUnpacked && eyeRect($0).contains(point) }) {
+                    model.pack(([tile.node].compactMap { $0 }) + tile.chain)
+                    return
+                }
+                let tile = hit(tiles, at: point)
                 // Double-click opens; a tap gesture of count 2 would delay
-                // every single click while it waits. Small items open their
-                // folder, where they get room of their own.
-                if let content, NSApp.currentEvent?.clickCount == 2 {
-                    model.open(content.owner)
+                // every single click while it waits. A block opens in place
+                // first; small items open their folder, where they get room.
+                if let tile, NSApp.currentEvent?.clickCount == 2 {
+                    if tile.isBlock, let node = tile.node, node.isDir {
+                        model.unpack(node)
+                    } else {
+                        model.open(tile.content.owner)
+                    }
                 } else {
-                    model.selected = content
+                    model.selected = tile?.content
                 }
             }
             .overlay {
@@ -98,7 +106,7 @@ private struct MosaicCanvas: View, Equatable {
                 Title(kind: node.kind, levelsBelow: tile.levelsBelow), default: Path()
             ].addPath(tile.isBlock ? outline : titleShape(tile))
             // A System folder open for its reclaimable space says so in its band.
-            if node.kind == .system, tile.header != nil {
+            if node.kind == .system, tile.header != nil, !tile.isUnpacked {
                 striped[tile.depth, default: []].append(tile)
             }
             // Up the left side and along the top, following the corner.
@@ -195,11 +203,27 @@ private struct MosaicCanvas: View, Equatable {
         let sizeWidth = sizeText.measure(in: unbounded).width
         let origin = CGPoint(x: owned.minX + padding, y: owned.midY - nameSize.height / 2)
         let sizeBelow = tile.header == nil && tile.rect.maxY - owned.maxY >= lineHeight + 4
-        let sizeBeside = !sizeBelow && owned.width - padding * 2 - nameWidth > sizeWidth + 8
+        let eyeRoom: CGFloat = tile.isUnpacked ? 20 : 0
+        let sizeBeside = !sizeBelow
+            && owned.width - padding * 2 - eyeRoom - nameWidth > sizeWidth + 8
 
         // A leaf may put its size below the band, so it owns the whole tile.
         var label = context
-        let area = tile.header ?? tile.rect
+        var area = tile.header ?? tile.rect
+        if tile.isUnpacked {
+            // Clicking the eye packs the folder back into a block.
+            var eye = context.resolve(Image(systemName: "eye"))
+            eye.shading = .color(.secondary)
+            let box = eyeRect(tile)
+            let size = eye.size
+            let scale = min(box.width / size.width, box.height / size.height)
+            context.draw(
+                eye,
+                in: CGRect(
+                    x: box.midX - size.width * scale / 2, y: box.midY - size.height * scale / 2,
+                    width: size.width * scale, height: size.height * scale))
+            area.size.width = eyeRect(tile).minX - area.minX
+        }
         label.clip(to: Path(area))
         if origin.x + nameWidth > area.maxX - 4 {
             fadeOut(&label, area)
@@ -343,6 +367,12 @@ private struct RingsCanvas: View {
     private func tile(of content: Tile.Content) -> Tile? {
         tiles.first { $0.content == content }
     }
+}
+
+/// Where an unpacked folder's eye sits: the right end of its band.
+func eyeRect(_ tile: Tile) -> CGRect {
+    let band = tile.header ?? tile.title
+    return CGRect(x: band.maxX - 24, y: band.midY - 8, width: 16, height: 16)
 }
 
 /// Diagonal bands, as wide as the gaps between them.

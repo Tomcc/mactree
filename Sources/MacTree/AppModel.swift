@@ -26,9 +26,8 @@ final class AppModel {
     private(set) var treeVersion = 0
     private(set) var emptyingTrash = false
     var confirmingEmptyTrash = false
-    /// Show inside System folders; off, they are single tiles. Only the
-    /// drawing changes: hiding again while inside one stays there.
-    var revealSystem = false
+    /// Blocks opened in place with a double-click, until closed again.
+    private(set) var unpacked: Set<ObjectIdentifier> = []
     var showingComputer = false
     var error: String?
 
@@ -38,7 +37,7 @@ final class AppModel {
         let size: CGSize
         let node: ObjectIdentifier
         let version: Int
-        let revealSystem: Bool
+        let unpacked: Set<ObjectIdentifier>
     }
 
     /// `showing` is where to land; by default a rescan stays where it was.
@@ -73,6 +72,8 @@ final class AppModel {
         // Keep the user where they were when rescanning the same root.
         let wasAt = showing ?? current?.path
         root = tree
+        // Keyed by node, so a fresh tree starts packed.
+        unpacked = []
         enclosing = enclosingFolders(of: tree.path)
         current = wasAt.flatMap { find($0, in: tree) } ?? tree
         selected = nil
@@ -113,12 +114,12 @@ final class AppModel {
         }
         let key = LayoutKey(
             size: size, node: ObjectIdentifier(current), version: treeVersion,
-            revealSystem: revealSystem)
+            unpacked: unpacked)
         if let cache = layoutCache, cache.key == key {
             return cache.tiles
         }
         var options = LayoutOptions()
-        options.revealSystem = revealSystem
+        options.unpacked = unpacked
         let tiles = layout(current, in: CGRect(origin: .zero, size: size), options: options)
         layoutCache = (key, tiles)
         return tiles
@@ -130,8 +131,17 @@ final class AppModel {
         guard node.isDir, !node.children.isEmpty else {
             return false
         }
-        return !node.hidesContents(revealingSystem: revealSystem)
+        return !node.hidesContents || unpacked.contains(ObjectIdentifier(node))
             || current?.isDescendant(of: node) == true
+    }
+
+    /// Opens a block in place; the next double-click opens it for real.
+    func unpack(_ node: Node) {
+        unpacked.insert(ObjectIdentifier(node))
+    }
+
+    func pack(_ nodes: [Node]) {
+        unpacked.subtract(nodes.map(ObjectIdentifier.init))
     }
 
     func open(_ node: Node) {

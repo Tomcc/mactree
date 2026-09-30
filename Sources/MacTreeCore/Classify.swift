@@ -166,11 +166,11 @@ private func isHome(_ node: Node) -> Bool {
 private let worthOpening: UInt64 = 10_000_000
 
 extension Node {
-    /// A System folder keeps its contents to itself, unless revealed or
-    /// holding real reclaimable space: there is nothing else to get back.
-    /// A package always does: it is deleted whole, never in parts.
-    public func hidesContents(revealingSystem: Bool) -> Bool {
-        !revealingSystem && (isPackage || kind == .system && reclaimableBytes < worthOpening)
+    /// A System folder keeps its contents to itself, unless it holds real
+    /// reclaimable space: there is nothing else to get back. A package
+    /// always does: it is deleted whole, never in parts.
+    public var hidesContents: Bool {
+        isPackage || kind == .system && reclaimableBytes < worthOpening
     }
 }
 

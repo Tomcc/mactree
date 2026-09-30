@@ -5,8 +5,9 @@ import Synchronization
 /// whose files are all tracked: that space is also in the cloud. Returns a
 /// line per repository git could not list.
 func markTracked(_ root: Node) -> [String] {
-    var repos: [Node] = []
-    collectRepos(root, into: &repos)
+    var found: [Node] = []
+    collectRepos(root, into: &found)
+    let repos = found
     let listed = Mutex<[(repo: Node, paths: [String])]>([])
     let failures = Mutex<[String]>([])
     DispatchQueue.concurrentPerform(iterations: repos.count) { index in

@@ -64,8 +64,6 @@ struct MacTreeApp: App {
                 .disabled(model.selected.map { !model.canOpen($0.owner) } ?? true)
             }
             CommandGroup(after: .toolbar) {
-                Toggle("Reveal System Files", isOn: $model.revealSystem)
-                    .keyboardShortcut(".", modifiers: [.command, .shift])
                 Button("Refresh") { model.rescan() }.keyboardShortcut("r")
             }
         }

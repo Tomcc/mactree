@@ -117,15 +117,14 @@ func child(_ node: Node, _ names: String...) -> Node {
 
     let photos = child(root, "Pictures", "Photos.photoslibrary")
     #expect(photos.isPackage && photos.kind == .other, "a package takes its place's kind")
-    #expect(photos.hidesContents(revealingSystem: false))
+    #expect(photos.hidesContents)
     #expect(child(photos, "resources", "caches").reclaim == nil,
         "a package's caches are its own, not to be cleared by hand")
     #expect(child(root, "Users", "ann", "Library").kind == .system, "a home's Library")
 
     #expect(child(root, "Apps", "Tool.app").kind == .app)
-    #expect(child(root, "Apps", "Tool.app").hidesContents(revealingSystem: false),
+    #expect(child(root, "Apps", "Tool.app").hidesContents,
         "apps are whole, even holding something reclaimable")
-    #expect(!child(root, "Apps", "Tool.app").hidesContents(revealingSystem: true))
     #expect(child(root, ".cache", "kache", "store").kind == .reclaimable)
     #expect(child(root, ".cache", "kache", "store").reclaim == .regenerable)
     #expect(child(root, "rusty", "target").reclaim == .buildOutput)
@@ -136,12 +135,11 @@ func child(_ node: Node, _ names: String...) -> Node {
         "reclaimable wins over system")
     #expect(child(root, "Library").kind == .other, "system names only at a volume root")
 
-    #expect(child(root, ".rustup").hidesContents(revealingSystem: false))
-    #expect(!child(root, ".rustup").hidesContents(revealingSystem: true))
-    #expect(!child(root, ".cargo").hidesContents(revealingSystem: false),
+    #expect(child(root, ".rustup").hidesContents)
+    #expect(!child(root, ".cargo").hidesContents,
         "a system folder with something reclaimable inside shows it")
-    #expect(child(root, ".cargo", "bin").hidesContents(revealingSystem: false))
-    #expect(child(root, ".tool").hidesContents(revealingSystem: false),
+    #expect(child(root, ".cargo", "bin").hidesContents)
+    #expect(child(root, ".tool").hidesContents,
         "a few kilobytes of cache are no reason to open a folder")
 }
 
@@ -191,11 +189,11 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(hidden.count == 2)
     let allBlocks = hidden.allSatisfy { $0.isBlock }
     #expect(allBlocks, "a hidden folder is deleted whole, like a file")
-    options.revealSystem = true
+    options.unpacked = [ObjectIdentifier(rustup)]
     let revealed = layout(root, in: area, options: options)
     #expect(revealed.count == 6)
     let opened = revealed.first { $0.node === rustup }
-    #expect(opened?.isBlock == false)
+    #expect(opened?.isBlock == false && opened?.isUnpacked == true)
 }
 
 @Test func volumeRootsAreDetected() {
@@ -413,7 +411,7 @@ private func isVolumeRootPath(_ info: statfs) -> String {
     for node in [frameworks, mono, tools] {
         node.kind = .system
     }
-    #expect(frameworks.hidesContents(revealingSystem: false))
+    #expect(frameworks.hidesContents)
     let tiles = layout(frameworks, in: CGRect(x: 0, y: 0, width: 1200, height: 600), options: LayoutOptions())
     let shown = tiles.compactMap { tile in tile.node.map { ($0.name, tile.isBlock) } }
     #expect(shown.map(\.0).sorted() == ["Mono.framework", "Tools"], "the drawn folder shows its children")

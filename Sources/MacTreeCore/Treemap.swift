@@ -26,6 +26,8 @@ public struct Tile: Sendable {
     public fileprivate(set) var levelsBelow = 0
     /// Deleted whole or not at all: a file, or a folder that hides its contents.
     public let isBlock: Bool
+    /// A folder that would be a block, opened in place on request.
+    public let isUnpacked: Bool
     /// Lone folders folded into this one's band, outermost first; the tile
     /// shows the last one's children.
     public let chain: [Node]
@@ -36,9 +38,9 @@ public struct Tile: Sendable {
     ) {
         self.content = content
         self.chain = chain
-        isBlock = content.node.map {
-            !$0.isDir || $0.hidesContents(revealingSystem: options.revealSystem)
-        } ?? false
+        isBlock = content.node.map { !$0.isDir || options.keepsClosed($0) } ?? false
+        isUnpacked = header != nil
+            && ((content.node.map { [$0] } ?? []) + chain).contains(where: options.isUnpacked)
         self.rect = rect
         self.depth = depth
         self.header = header
@@ -99,10 +101,20 @@ public struct LayoutOptions: Equatable, Sendable {
     /// for about three by three of the smallest tiles: depth follows the room
     /// on screen, not a fixed level count.
     public var minBody = CGSize(width: 90, height: 90)
-    /// Draw inside System folders too; see `Node.hidesContents`.
-    public var revealSystem = false
+    /// Folders drawn open although they hide their contents.
+    public var unpacked: Set<ObjectIdentifier> = []
 
     public init() {}
+}
+
+extension LayoutOptions {
+    func isUnpacked(_ node: Node) -> Bool {
+        node.hidesContents && unpacked.contains(ObjectIdentifier(node))
+    }
+
+    func keepsClosed(_ node: Node) -> Bool {
+        node.hidesContents && !unpacked.contains(ObjectIdentifier(node))
+    }
 }
 
 /// Parents come before their children, so painting in order and hit-testing
@@ -128,7 +140,7 @@ private func placeChildren(
         }
         // No room for a band and a readable body: the tile stays whole.
         guard case .node(let child) = content, child.isDir,
-            !child.hidesContents(revealingSystem: options.revealSystem),
+            !options.keepsClosed(child),
             let header = headerBand(rect, depth: depth, options: options)
         else {
             tiles.append(Tile(
@@ -142,7 +154,7 @@ private func placeChildren(
         // folders costs one band, not a band each.
         var chain: [Node] = []
         while inner.count == 1, case .node(let only) = inner[0].content, only.isDir,
-            !only.hidesContents(revealingSystem: options.revealSystem)
+            !options.keepsClosed(only)
         {
             chain.append(only)
             inner = fitChildren(of: only, in: body, depth: depth + 1, options: options)
