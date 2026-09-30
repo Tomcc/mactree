@@ -46,7 +46,11 @@ struct ContentView: View {
     @ViewBuilder private var main: some View {
         switch model.phase {
         case .idle:
-            Color.clear
+            ContentUnavailableView {
+                Label("Nothing scanned yet", systemImage: "internaldrive")
+            } actions: {
+                Button("Choose a Disk or Folder…") { model.showingComputer = true }
+            }
         case .scanning(let path):
             VStack(spacing: 8) {
                 ProgressView()

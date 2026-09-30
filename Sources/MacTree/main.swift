@@ -24,8 +24,15 @@ struct MacTreeApp: App {
             ContentView(model: model, chooseFolder: chooseFolder)
                 .frame(minWidth: 900, minHeight: 600)
                 .onAppear {
-                    if case .idle = model.phase {
-                        model.scan(startPath)
+                    guard case .idle = model.phase else {
+                        return
+                    }
+                    // Scanning a whole home folder takes a while: ask first,
+                    // unless a folder was passed on the command line.
+                    if let path = startPath {
+                        model.scan(path)
+                    } else {
+                        model.showingComputer = true
                     }
                 }
         }
@@ -62,12 +69,11 @@ struct MacTreeApp: App {
         }
     }
 
-    /// `-path <dir>` on the command line, or the home folder. AppKit reads
-    /// `-key value` as a default; a bare path would be a file to open, and
-    /// SwiftUI then skips the main window.
-    private var startPath: String {
+    /// `-path <dir>` on the command line. AppKit reads `-key value` as a
+    /// default; a bare path would be a file to open, and SwiftUI then skips
+    /// the main window.
+    private var startPath: String? {
         UserDefaults.standard.string(forKey: "path").map { ($0 as NSString).standardizingPath }
-            ?? NSHomeDirectory()
     }
 
     private func chooseFolder() {

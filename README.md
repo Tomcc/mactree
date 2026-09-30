@@ -11,7 +11,7 @@ room to show them.
 
 ```sh
 ./scripts/bundle.sh --install     # release build → ~/Applications/MacTree.app
-open ~/Applications/MacTree.app --args -path ~/Developer   # or any folder; default is ~
+open ~/Applications/MacTree.app --args -path ~/Developer   # skips the disk picker
 ```
 
 Scanning `~/Library` hits macOS privacy folders; give the app Full Disk Access to see them.

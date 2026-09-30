@@ -96,11 +96,17 @@ private struct MosaicCanvas: View, Equatable {
             case .node(let node): kind = node.kind
             case .others(let parent, _): kind = parent.kind
             }
-            bodies[tile.depth, default: Path()].addRect(tile.rect)
-            titles[tile.depth, default: [:]][kind, default: Path()].addRect(tile.title)
-            highlights.move(to: CGPoint(x: tile.rect.minX + 0.5, y: tile.rect.maxY))
-            highlights.addLine(to: CGPoint(x: tile.rect.minX + 0.5, y: tile.rect.minY + 0.5))
-            highlights.addLine(to: CGPoint(x: tile.rect.maxX, y: tile.rect.minY + 0.5))
+            let radius = tileRadius(tile)
+            bodies[tile.depth, default: Path()].addPath(rounded(tile.rect, radius))
+            titles[tile.depth, default: [:]][kind, default: Path()].addPath(titleShape(tile))
+            // Up the left side and along the top, following the corner.
+            let inner = tile.rect.insetBy(dx: 0.5, dy: 0.5)
+            highlights.move(to: CGPoint(x: inner.minX, y: inner.maxY - radius))
+            highlights.addLine(to: CGPoint(x: inner.minX, y: inner.minY + radius))
+            highlights.addQuadCurve(
+                to: CGPoint(x: inner.minX + radius, y: inner.minY),
+                control: CGPoint(x: inner.minX, y: inner.minY))
+            highlights.addLine(to: CGPoint(x: inner.maxX - radius, y: inner.minY))
         }
         let environment = context.environment
         for depth in bodies.keys.sorted() {
@@ -121,7 +127,7 @@ private struct MosaicCanvas: View, Equatable {
         var region = Path()
         for tile in tiles {
             if case .others = tile.content {
-                region.addRect(tile.rect)
+                region.addPath(rounded(tile.rect, tileRadius(tile)))
             }
         }
         guard !region.isEmpty else {
@@ -212,13 +218,13 @@ private struct RingsCanvas: View {
         Canvas { context, _ in
             if let hovered, hovered !== selected, let tile = tile(of: hovered) {
                 context.stroke(
-                    Path(tile.rect.insetBy(dx: 0.5, dy: 0.5)),
+                    rounded(tile.rect.insetBy(dx: 0.5, dy: 0.5), tileRadius(tile)),
                     with: .color(.primary.opacity(0.4)), lineWidth: 1)
             }
             if let selected, let tile = tile(of: selected) {
                 context.stroke(
-                    Path(tile.rect.insetBy(dx: 1, dy: 1)), with: .color(.accentColor),
-                    lineWidth: 2)
+                    rounded(tile.rect.insetBy(dx: 1, dy: 1), tileRadius(tile) - 1),
+                    with: .color(.accentColor), lineWidth: 2)
             }
         }
         .allowsHitTesting(false)
@@ -227,4 +233,24 @@ private struct RingsCanvas: View {
     private func tile(of node: Node) -> Tile? {
         tiles.first { $0.node === node }
     }
+}
+
+/// Top-level tiles are a little rounder, so that level reads first.
+private func tileRadius(_ tile: Tile) -> CGFloat {
+    tile.depth == 0 ? 4 : 3
+}
+
+private func rounded(_ rect: CGRect, _ radius: CGFloat) -> Path {
+    Path(roundedRect: rect, cornerSize: CGSize(width: radius, height: radius))
+}
+
+/// The title band shares the tile's top corners; its bottom is square unless
+/// it is the whole tile.
+private func titleShape(_ tile: Tile) -> Path {
+    let radius = tileRadius(tile)
+    let bottom = tile.title.maxY >= tile.rect.maxY ? radius : 0
+    return UnevenRoundedRectangle(
+        topLeadingRadius: radius, bottomLeadingRadius: bottom,
+        bottomTrailingRadius: bottom, topTrailingRadius: radius
+    ).path(in: tile.title)
 }
