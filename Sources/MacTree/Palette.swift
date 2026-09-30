@@ -19,29 +19,42 @@ enum Palette {
     static let background = Color(nsColor: .windowBackgroundColor)
     private static let surface = Color(nsColor: .textBackgroundColor)
 
-    /// A tile's body: neutral, a shade further from the surface per level so
-    /// nesting still reads.
+    /// A tile's body: neutral, and lighter the deeper it is nested, the way
+    /// stacked things catch more light. Level 0 is the darkest in both modes.
     static func body(depth: Int, in environment: EnvironmentValues) -> Color {
-        mixed(Color(nsColor: .systemGray), 0.03 * Float(min(depth, 5)), in: environment)
+        let step = Float(min(depth, 4))
+        let surface = surface.resolve(in: environment)
+        if environment.colorScheme == .dark {
+            return Color(surface.mixed(with: .white, 0.02 + 0.035 * step))
+        }
+        return Color(surface.mixed(with: .black, 0.12 - 0.025 * step))
     }
 
-    /// A title band: the kind's colour, the one place it is shown.
+    /// The gaps between tiles: darker than any tile, so they always separate.
+    static func well(in environment: EnvironmentValues) -> Color {
+        let dark = environment.colorScheme == .dark
+        return Color(surface.resolve(in: environment).mixed(with: .black, dark ? 0.5 : 0.2))
+    }
+
+    /// A title band: the kind's colour over the body's lightness, the one
+    /// place the colour is shown.
     static func title(_ kind: Kind, depth: Int, in environment: EnvironmentValues) -> Color {
-        let amount = (kind == .other ? 0.08 : 0.2) + 0.03 * Float(min(depth, 4))
+        let body = body(depth: depth, in: environment).resolve(in: environment)
         // The same tint reads stronger on a dark background.
         let scale: Float = environment.colorScheme == .dark ? 0.7 : 1
-        return mixed(color(kind), amount * scale, in: environment)
+        let amount = (kind == .other ? 0.06 : 0.24) * scale
+        return Color(body.mixed(with: color(kind).resolve(in: environment), amount))
     }
+}
+
+private extension Color.Resolved {
+    static let white = Color.Resolved(red: 1, green: 1, blue: 1)
+    static let black = Color.Resolved(red: 0, green: 0, blue: 0)
 
     /// Solid, so nested tiles never blend into each other's hue.
-    private static func mixed(_ tint: Color, _ amount: Float, in environment: EnvironmentValues)
-        -> Color
-    {
-        let base = surface.resolve(in: environment)
-        let tint = tint.resolve(in: environment)
+    func mixed(with other: Color.Resolved, _ amount: Float) -> Color.Resolved {
         let mix = { (a: Float, b: Float) in a + (b - a) * amount }
-        return Color(Color.Resolved(
-            red: mix(base.red, tint.red), green: mix(base.green, tint.green),
-            blue: mix(base.blue, tint.blue)))
+        return Color.Resolved(
+            red: mix(red, other.red), green: mix(green, other.green), blue: mix(blue, other.blue))
     }
 }

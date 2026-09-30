@@ -109,6 +109,9 @@ private struct MosaicCanvas: View, Equatable {
             highlights.addLine(to: CGPoint(x: inner.maxX - radius, y: inner.minY))
         }
         let environment = context.environment
+        context.fill(
+            Path(CGRect(origin: .zero, size: context.clipBoundingRect.size)),
+            with: .color(Palette.well(in: environment)))
         for depth in bodies.keys.sorted() {
             if let body = bodies[depth] {
                 context.fill(body, with: .color(Palette.body(depth: depth, in: environment)))
@@ -182,7 +185,8 @@ private struct MosaicCanvas: View, Equatable {
         // A leaf may put its size below the band, so it owns the whole tile.
         var label = context
         label.clip(to: Path(tile.header ?? tile.rect))
-        let padding: CGFloat = 6
+        // Clear of the corner's curve.
+        let padding: CGFloat = 9
         let lineHeight: CGFloat = 14
         let origin = CGPoint(
             x: owned.minX + padding, y: owned.midY - name.measure(in: owned.size).height / 2)
@@ -235,9 +239,10 @@ private struct RingsCanvas: View {
     }
 }
 
-/// Top-level tiles are a little rounder, so that level reads first.
+/// Close to the window's own corners; top-level tiles a little rounder,
+/// so that level reads first.
 private func tileRadius(_ tile: Tile) -> CGFloat {
-    tile.depth == 0 ? 4 : 3
+    tile.depth == 0 ? 10 : 8
 }
 
 private func rounded(_ rect: CGRect, _ radius: CGFloat) -> Path {
