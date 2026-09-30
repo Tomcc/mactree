@@ -87,6 +87,9 @@ struct ContentView: View {
                 Label("Back", systemImage: "chevron.backward")
             }
             .help("Go back to where you were")
+            // Clear of the window's buttons, which the compact toolbar crowds.
+            .padding(.leading, 12)
+            .padding(.trailing, toolbarGap)
             .disabled(model.history.isEmpty)
             Button {
                 model.up()
@@ -95,6 +98,7 @@ struct ContentView: View {
             }
             .help("Go to the enclosing folder")
             .disabled(!model.canGoUp)
+            .padding(.horizontal, toolbarGap)
         }
         ToolbarItemGroup(placement: .primaryAction) {
             Toggle(isOn: freeSpaceShown) {
@@ -102,12 +106,14 @@ struct ContentView: View {
             }
             .help("Show the disk\u{2019}s free space beside its contents")
             .disabled(!model.canShowFreeSpace)
+            .padding(.horizontal, toolbarGap)
             Button {
                 model.showingComputer = true
             } label: {
                 Label("Computer", systemImage: "desktopcomputer")
             }
             .help("Scan a disk or another folder")
+            .padding(.horizontal, toolbarGap)
             Button {
                 model.rescan()
             } label: {
@@ -115,6 +121,7 @@ struct ContentView: View {
             }
             .help("Scan again")
             .disabled(model.root == nil)
+            .padding(.horizontal, toolbarGap)
             Button(role: .destructive) {
                 model.confirmingEmptyTrash = true
             } label: {
@@ -124,8 +131,12 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .tint(.red)
             .disabled(model.emptyingTrash)
+            .padding(.leading, toolbarGap)
         }
     }
+
+    /// Half the space between toolbar buttons, which otherwise touch.
+    private var toolbarGap: CGFloat { 4 }
 
     private var freeSpaceShown: Binding<Bool> {
         Binding(get: { model.showsFreeSpace }, set: { model.showsFreeSpace = $0 })
@@ -239,10 +250,10 @@ private struct Legend: View {
         HStack(spacing: 6) {
             ForEach(Kind.legend, id: \.self) { kind in
                 Text(kind.label)
-                    .foregroundStyle(Palette.color(kind))
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 1)
-                    .background(Capsule().fill(Palette.color(kind).opacity(0.18)))
+                    .background(Capsule().fill(Palette.color(kind)))
             }
         }
     }

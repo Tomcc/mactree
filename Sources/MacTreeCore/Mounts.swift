@@ -89,6 +89,11 @@ public func enclosingFolders(of path: String) -> [Folder] {
     return folders
 }
 
+/// Ours, by either of its firmlinked paths.
+public func isHomeDirectory(_ path: String) -> Bool {
+    canonicalPath(path) == canonicalPath(NSHomeDirectory())
+}
+
 /// Firmlinks make /System/Volumes/Data/Users and /Users one folder; this is
 /// the short form, "" for the data volume itself, for comparing paths.
 public func canonicalPath(_ path: String) -> String {

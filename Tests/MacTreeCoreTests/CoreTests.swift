@@ -423,4 +423,18 @@ private func isVolumeRootPath(_ info: statfs) -> String {
     #expect(canonicalPath("/Users/ann") == "/Users/ann")
     #expect(canonicalPath("/System/Volumes/Data") == "")
     #expect(canonicalPath("/System/Volumes/DataX") == "/System/Volumes/DataX")
+    #expect(isHomeDirectory("/System/Volumes/Data" + NSHomeDirectory()))
+    #expect(!isHomeDirectory(NSHomeDirectory() + "/Library"))
+}
+
+@Test func aHomeScannedByItsFirmlinkedPathKeepsItsLibrarySystem() {
+    for path in [NSHomeDirectory(), "/System/Volumes/Data" + NSHomeDirectory()] {
+        let home = Node(name: path, isDir: true)
+        let library = Node(name: "Library", isDir: true)
+        library.adopt(Node(name: "p", isDir: false, bytes: 1))
+        home.adopt(library)
+        home.aggregate()
+        classify(home)
+        #expect(library.kind == .system, "\(path)")
+    }
 }

@@ -158,7 +158,7 @@ private func sumReclaimable(_ node: Node) -> UInt64 {
 
 /// A user's home: the scanned home itself, or a folder in `Users`.
 private func isHome(_ node: Node) -> Bool {
-    node.parent?.displayName == "Users" || node.path == NSHomeDirectory()
+    node.parent?.displayName == "Users" || isHomeDirectory(node.path)
 }
 
 /// Less than this is no reason to open a System folder: a `.git` holds a
