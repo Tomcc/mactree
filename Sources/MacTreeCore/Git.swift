@@ -32,8 +32,12 @@ func markTracked(_ root: Node) -> [String] {
 }
 
 /// Directories holding a `.git`: a folder for a repository, a file for a
-/// submodule or a worktree.
+/// submodule or a worktree. Reclaimable space is skipped: it shows as such
+/// whatever git says, and caches hold `.git` markers that aren't repos.
 private func collectRepos(_ node: Node, into repos: inout [Node]) {
+    guard node.reclaim == nil else {
+        return
+    }
     if node.children.contains(where: { $0.name == ".git" }) {
         repos.append(node)
     }

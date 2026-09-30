@@ -86,25 +86,32 @@ private let systemNames: Set<String> = [
     "System", "Library", "private", "usr", "bin", "sbin", "cores", "opt",
 ]
 
+/// Top-down: why each node's space can be had back, inherited downwards.
+/// Runs before git, which has nothing to say about reclaimable space.
+func markReclaim(_ node: Node) {
+    let names = Set(node.children.map(\.name))
+    for child in node.children {
+        child.reclaim = node.reclaim
+        if child.isDir && child.reclaim == nil {
+            child.reclaim = reclaim(
+                ofName: child.name, parentName: node.displayName, hasSibling: names.contains)
+        }
+        markReclaim(child)
+    }
+}
+
 /// Top-down; a node inherits its parent's kind unless it says more itself.
-/// Needs `tracked` marked first.
-public func classify(_ root: Node) {
+/// Needs `reclaim` and `tracked` marked first.
+func classify(_ root: Node) {
     root.kind = .other
-    root.reclaim = nil
-    classifyChildren(of: root, kind: .other, reclaim: nil, volumeRoot: isVolumeRoot(root.path))
+    classifyChildren(of: root, kind: .other, volumeRoot: isVolumeRoot(root.path))
     markHoldsReclaimable(root)
 }
 
-private func classifyChildren(of node: Node, kind: Kind, reclaim: Reclaim?, volumeRoot: Bool) {
-    let names = Set(node.children.map(\.name))
+private func classifyChildren(of node: Node, kind: Kind, volumeRoot: Bool) {
     for child in node.children {
-        var childReclaim = reclaim
-        if child.isDir {
-            childReclaim = reclaim ?? MacTreeCore.reclaim(
-                ofName: child.name, parentName: node.displayName, hasSibling: names.contains)
-        }
         let childKind: Kind
-        if childReclaim != nil {
+        if child.reclaim != nil {
             childKind = .reclaimable
         } else if child.isApp {
             childKind = .app
@@ -119,8 +126,7 @@ private func classifyChildren(of node: Node, kind: Kind, reclaim: Reclaim?, volu
             childKind = kind == .git ? .other : kind
         }
         child.kind = childKind
-        child.reclaim = childReclaim
-        classifyChildren(of: child, kind: childKind, reclaim: childReclaim, volumeRoot: false)
+        classifyChildren(of: child, kind: childKind, volumeRoot: false)
     }
 }
 

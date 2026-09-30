@@ -23,16 +23,23 @@ public enum Scanner {
     /// Scan everything under `path` on its volume: aggregated, sorted and
     /// classified. Blocks the calling thread; the walk itself is parallel.
     public static func scan(_ path: String, progress: ScanProgress) -> Result {
+        scan(path, progress: progress, mounts: .current(excluding: path))
+    }
+
+    static func scan(_ path: String, progress: ScanProgress, mounts: ForeignMounts) -> Result {
         let root = Node(name: path, isDir: true)
-        walk(root, path: path, progress: progress)
+        walk(root, path: path, progress: progress, mounts: mounts)
         root.aggregate()
+        markReclaim(root)
         let gitFailures = markTracked(root)
         classify(root)
         return Result(root: root, gitFailures: gitFailures)
     }
 
     /// Fill `dir`'s subtree from disk, without aggregating it.
-    static func walk(_ dir: Node, path: String, progress: ScanProgress) {
+    private static func walk(
+        _ dir: Node, path: String, progress: ScanProgress, mounts: ForeignMounts
+    ) {
         let queue = WorkQueue(first: Pending(node: dir, path: path))
         let links = SeenInodes()
         let workers = ProcessInfo.processInfo.activeProcessorCount
@@ -41,7 +48,12 @@ public enum Scanner {
                 byteCount: bufferSize, alignment: 16)
             defer { buffer.deallocate() }
             while let next = queue.next() {
-                let subdirs = list(next, buffer: buffer, links: links, progress: progress)
+                let subdirs: [Pending]
+                if let names = mounts.byParent[next.path] {
+                    subdirs = listAround(next, mounts: names, links: links, progress: progress)
+                } else {
+                    subdirs = list(next, buffer: buffer, links: links, progress: progress)
+                }
                 queue.finish(adding: subdirs)
             }
         }
@@ -100,6 +112,52 @@ public enum Scanner {
         }
         return subdirs
     }
+
+    /// Like `list`, for a directory holding other volumes' mount points:
+    /// names come from `readdir`, which stays on this volume, and only the
+    /// entries that aren't mounts are `lstat`ed.
+    private static func listAround(
+        _ pending: Pending, mounts: Set<String>, links: SeenInodes, progress: ScanProgress
+    ) -> [Pending] {
+        let dir = pending.node
+        guard let stream = opendir(pending.path) else {
+            dir.unreadableHere = true
+            return []
+        }
+        defer { closedir(stream) }
+        var subdirs: [Pending] = []
+        let base = pending.path.hasSuffix("/") ? pending.path : pending.path + "/"
+        while let record = readdir(stream) {
+            let name = withUnsafeBytes(of: record.pointee.d_name) { raw in
+                String(decoding: raw.prefix(Int(record.pointee.d_namlen)), as: UTF8.self)
+            }
+            guard name != ".", name != ".." else {
+                continue
+            }
+            progress.entries.add(1, ordering: .relaxed)
+            if mounts.contains(name) {
+                let node = Node(name: name, isDir: true)
+                node.isMountPoint = true
+                dir.adopt(node)
+                continue
+            }
+            var info = stat()
+            guard lstat(base + name, &info) == 0 else {
+                dir.unreadableHere = true
+                continue
+            }
+            let entry = Entry(
+                name: name, isDir: info.st_mode & S_IFMT == S_IFDIR,
+                modTime: info.st_mtimespec.tv_sec, fileID: info.st_ino,
+                linkCount: UInt32(info.st_nlink), allocSize: UInt64(info.st_blocks) * 512)
+            let node = entry.node(links: links)
+            dir.adopt(node)
+            if node.isDir {
+                subdirs.append(Pending(node: node, path: base + name))
+            }
+        }
+        return subdirs
+    }
 }
 
 /// Inodes with more than one name, so each is counted once.
@@ -143,6 +201,18 @@ private struct Entry {
     var isMountPoint = false
     var linkCount: UInt32 = 1
     var allocSize: UInt64 = 0
+
+    init(
+        name: String, isDir: Bool, modTime: Int, fileID: UInt64, linkCount: UInt32,
+        allocSize: UInt64
+    ) {
+        self.name = name
+        self.isDir = isDir
+        self.modTime = modTime
+        self.fileID = fileID
+        self.linkCount = linkCount
+        self.allocSize = allocSize
+    }
 
     init?(_ start: UnsafeMutableRawPointer) {
         var cursor = UnsafeRawPointer(start) + 4

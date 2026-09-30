@@ -318,3 +318,25 @@ func child(_ node: Node, _ names: String...) -> Node {
     })
     #expect(levels == ["deep": 2, "middle": 1, "a": 0, "b": 0, "leaf": 0, "file": 0])
 }
+
+@Test func foldersHoldingMountsAreListedWithoutTouchingThem() throws {
+    let tree = try TempTree()
+    try tree.file("data/a.bin", bytes: 10_000)
+    try tree.file("data/sub/b.bin", bytes: 5000)
+    try tree.file("data/share/inside", bytes: 1)
+    try FileManager.default.linkItem(atPath: tree.root + "/data/a.bin", toPath: tree.root + "/data/twin")
+    try FileManager.default.createSymbolicLink(
+        atPath: tree.root + "/data/link", withDestinationPath: "sub")
+    let plain = Scanner.scan(tree.root, progress: ScanProgress()).root
+    // Pretend a network share is mounted at data/share.
+    let mounts = ForeignMounts(byParent: [tree.root + "/data": ["share"]])
+    let careful = Scanner.scan(tree.root, progress: ScanProgress(), mounts: mounts).root
+
+    let share = child(careful, "data", "share")
+    #expect(share.isMountPoint && share.children.isEmpty, "a mount is never entered")
+    for name in ["a.bin", "twin", "link", "sub"] {
+        #expect(child(careful, "data", name).bytes == child(plain, "data", name).bytes, "\(name)")
+        #expect(child(careful, "data", name).isDir == child(plain, "data", name).isDir, "\(name)")
+    }
+    #expect(child(careful, "data").bytes == child(plain, "data").bytes - child(plain, "data", "share").bytes)
+}
