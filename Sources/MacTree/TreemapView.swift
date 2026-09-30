@@ -213,7 +213,7 @@ private struct MosaicCanvas: View, Equatable {
             Text(formatBytes(tile.content.bytes)).font(.system(size: 12))
                 .foregroundStyle(.tertiary))
         // Too narrow for the whole phrase: the status bar still names it.
-        guard name.measure(in: tile.rect.size).width <= tile.rect.width - 8 else {
+        guard name.measure(in: .init(width: 1000, height: 100)).width <= tile.rect.width - 8 else {
             return
         }
         var label = context
