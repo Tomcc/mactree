@@ -175,7 +175,7 @@ final class AppModel {
     private var trashPath: String { NSHomeDirectory() + "/.Trash" }
 
     /// Through Finder, which knows every volume's Trash and needs no Full
-    /// Disk Access; the first time, macOS asks to let mactree control Finder.
+    /// Disk Access; the first time, macOS asks to let MacTree control Finder.
     func emptyTrash() {
         emptyingTrash = true
         Task {

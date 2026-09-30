@@ -1,4 +1,4 @@
-# mactree
+# MacTree
 
 A native macOS treemap for finding what fills your disk. SwiftUI port of
 [tobi/disktree](https://github.com/tobi/disktree) (MIT), which is the same idea for Omarchy/Linux.
@@ -19,7 +19,7 @@ The build is ad-hoc signed, so that grant resets whenever you rebuild.
 
 Everything is in the toolbar and the right-click menu; the Go and File menus add
 `⌘↑` / `⌘↓` / `⌘⌫` / `⌘R` for keyboard users. Empty Trash goes through Finder, so macOS asks
-once to let mactree control it.
+once to let MacTree control it.
 
 ## Develop
 

@@ -12,8 +12,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>mactree</string>
-    <key>CFBundleDisplayName</key><string>mactree</string>
+    <key>CFBundleName</key><string>MacTree</string>
+    <key>CFBundleDisplayName</key><string>MacTree</string>
     <key>CFBundleIdentifier</key><string>com.tomcc.mactree</string>
     <key>CFBundleExecutable</key><string>MacTree</string>
     <key>CFBundlePackageType</key><string>APPL</string>
@@ -21,7 +21,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSHighResolutionCapable</key><true/>
-    <key>NSAppleEventsUsageDescription</key><string>mactree asks Finder to empty the Trash.</string>
+    <key>NSAppleEventsUsageDescription</key><string>MacTree asks Finder to empty the Trash.</string>
 </dict>
 </plist>
 PLIST

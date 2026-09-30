@@ -20,7 +20,7 @@ struct MacTreeApp: App {
 
     var body: some Scene {
         // A `Window` scene never opened when launched from a shell.
-        WindowGroup("mactree") {
+        WindowGroup("MacTree") {
             ContentView(model: model, chooseFolder: chooseFolder)
                 .frame(minWidth: 900, minHeight: 600)
                 .onAppear {

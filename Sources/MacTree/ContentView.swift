@@ -11,7 +11,7 @@ struct ContentView: View {
             Divider()
             StatusBar(model: model)
         }
-        .navigationTitle(model.current?.displayName ?? "mactree")
+        .navigationTitle(model.current?.displayName ?? "MacTree")
         .navigationSubtitle(subtitle)
         .toolbar { toolbar }
         .task { await model.watchFreeSpace() }
