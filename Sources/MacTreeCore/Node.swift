@@ -30,9 +30,9 @@ public final class Node: @unchecked Sendable {
     public var reclaim: Reclaim?
     /// A file some repository tracks, or a folder of only such files.
     public var tracked = false
-    /// Reclaimable itself or somewhere below: a System folder shows its
-    /// contents only then, since that is the one reason to look inside.
-    public var holdsReclaimable = false
+    /// Reclaimable space at or below this node: a System folder shows its
+    /// contents only for enough of it, the one reason to look inside.
+    public var reclaimableBytes: UInt64 = 0
 
     public init(name: String, isDir: Bool, bytes: UInt64 = 0, newest: Int = 0) {
         self.name = name

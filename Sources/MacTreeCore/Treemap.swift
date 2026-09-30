@@ -24,9 +24,14 @@ public struct Tile: Sendable {
     /// Levels of nested tiles under this one, along its deepest branch: 0 for
     /// a tile with no child tiles.
     public fileprivate(set) var levelsBelow = 0
+    /// Deleted whole or not at all: a file, or a folder that hides its contents.
+    public let isBlock: Bool
 
     init(content: Content, rect: CGRect, depth: Int, header: CGRect?, options: LayoutOptions) {
         self.content = content
+        isBlock = content.node.map {
+            !$0.isDir || $0.hidesContents(revealingSystem: options.revealSystem)
+        } ?? false
         self.rect = rect
         self.depth = depth
         self.header = header

@@ -80,6 +80,7 @@ private struct MosaicCanvas: View, Equatable {
         var outlines: [Int: Path] = [:]
         var bodies: [Int: [Int: Path]] = [:]
         var titles: [Int: [Title: Path]] = [:]
+        var striped: [Int: [Tile]] = [:]
         var highlights = Path()
         var shades = Path()
         for tile in tiles {
@@ -95,7 +96,11 @@ private struct MosaicCanvas: View, Equatable {
             // A file is all colour, a folder only its band: told apart at a glance.
             titles[tile.depth, default: [:]][
                 Title(kind: node.kind, levelsBelow: tile.levelsBelow), default: Path()
-            ].addPath(drawsAsFile(tile) ? outline : titleShape(tile))
+            ].addPath(tile.isBlock ? outline : titleShape(tile))
+            // A System folder open for its reclaimable space says so in its band.
+            if node.kind == .system, tile.header != nil {
+                striped[tile.depth, default: []].append(tile)
+            }
             // Up the left side and along the top, following the corner.
             let inner = tile.rect.insetBy(dx: 0.5, dy: 0.5)
             highlights.move(to: CGPoint(x: inner.minX, y: inner.maxY - radius))
@@ -135,6 +140,14 @@ private struct MosaicCanvas: View, Equatable {
                     with: .color(Palette.title(
                         title.kind, levelsBelow: title.levelsBelow, in: environment)))
             }
+            for tile in striped[depth] ?? [] {
+                var band = context
+                band.clip(to: titleShape(tile))
+                band.fill(
+                    stripes(across: tile.title),
+                    with: .color(Palette.title(
+                        .reclaimable, levelsBelow: tile.levelsBelow, in: environment)))
+            }
         }
         context.stroke(highlights, with: .color(.white.opacity(dark ? 0.08 : 0.8)), lineWidth: 1)
         context.stroke(shades, with: .color(.black.opacity(dark ? 0.4 : 0.12)), lineWidth: 1)
@@ -159,7 +172,7 @@ private struct MosaicCanvas: View, Equatable {
             paintSmallItemsLabel(&context, tile)
             return
         }
-        guard !drawsAsFile(tile) else {
+        guard !tile.isBlock else {
             paintFileLabel(&context, tile, node)
             return
         }
@@ -319,13 +332,22 @@ private struct RingsCanvas: View {
     }
 }
 
-/// Files, and apps unless revealed: one thing each, so one flat colour.
-private func drawsAsFile(_ tile: Tile) -> Bool {
-    guard let node = tile.node else {
-        return false
+/// Diagonal bands, as wide as the gaps between them.
+private func stripes(across rect: CGRect) -> Path {
+    var path = Path()
+    let width: CGFloat = 6
+    var x = rect.minX - rect.height
+    while x < rect.maxX {
+        path.move(to: CGPoint(x: x, y: rect.maxY))
+        path.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+        path.addLine(to: CGPoint(x: x + rect.height + width, y: rect.minY))
+        path.addLine(to: CGPoint(x: x + width, y: rect.maxY))
+        path.closeSubpath()
+        x += width * 2
     }
-    return !node.isDir || node.isApp && tile.header == nil
+    return path
 }
+
 
 /// Icons are looked up once per app; the mosaic repaints on every resize.
 @MainActor private var appIcons: [String: NSImage] = [:]
@@ -335,6 +357,8 @@ private func drawsAsFile(_ tile: Tile) -> Bool {
         return icon
     }
     let icon = NSWorkspace.shared.icon(forFile: path)
+    // The icon comes sized 32 pt, and draws from its 32 pt image when scaled up.
+    icon.size = NSSize(width: 128, height: 128)
     appIcons[path] = icon
     return icon
 }

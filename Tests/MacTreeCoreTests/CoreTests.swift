@@ -105,7 +105,9 @@ func child(_ node: Node, _ names: String...) -> Node {
     try tree.file("jsy/target/d", bytes: 1)
     try tree.file("app/Logs/today.log", bytes: 1)
     try tree.file(".rustup/toolchains/stable/lib", bytes: 1)
-    try tree.file(".cargo/registry/cache/crate", bytes: 1)
+    try tree.file(".cargo/registry/cache/crate", bytes: 11_000_000)
+    try tree.file(".tool/lib/cache/tiny", bytes: 50_000)
+    try tree.file(".tool/lib/big", bytes: 1_000_000)
     try tree.file(".cargo/bin/cargo", bytes: 1)
     try tree.file("Library/stuff", bytes: 1)
     try tree.file("Apps/Tool.app/Contents/Caches/c", bytes: 1)
@@ -130,6 +132,8 @@ func child(_ node: Node, _ names: String...) -> Node {
     #expect(!child(root, ".cargo").hidesContents(revealingSystem: false),
         "a system folder with something reclaimable inside shows it")
     #expect(child(root, ".cargo", "bin").hidesContents(revealingSystem: false))
+    #expect(child(root, ".tool").hidesContents(revealingSystem: false),
+        "a few kilobytes of cache are no reason to open a folder")
 }
 
 @Test func trackedFilesAreGit() throws {
@@ -174,9 +178,15 @@ func child(_ node: Node, _ names: String...) -> Node {
     rustup.kind = .system
     let area = CGRect(x: 0, y: 0, width: 1600, height: 1000)
     var options = LayoutOptions()
-    #expect(layout(root, in: area, options: options).count == 2)
+    let hidden = layout(root, in: area, options: options)
+    #expect(hidden.count == 2)
+    let allBlocks = hidden.allSatisfy { $0.isBlock }
+    #expect(allBlocks, "a hidden folder is deleted whole, like a file")
     options.revealSystem = true
-    #expect(layout(root, in: area, options: options).count == 6)
+    let revealed = layout(root, in: area, options: options)
+    #expect(revealed.count == 6)
+    let opened = revealed.first { $0.node === rustup }
+    #expect(opened?.isBlock == false)
 }
 
 @Test func volumeRootsAreDetected() {

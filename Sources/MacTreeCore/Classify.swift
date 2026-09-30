@@ -105,7 +105,7 @@ func markReclaim(_ node: Node) {
 func classify(_ root: Node) {
     root.kind = .other
     classifyChildren(of: root, kind: .other, volumeRoot: isVolumeRoot(root.path))
-    markHoldsReclaimable(root)
+    sumReclaimable(root)
 }
 
 private func classifyChildren(of node: Node, kind: Kind, volumeRoot: Bool) {
@@ -131,21 +131,22 @@ private func classifyChildren(of node: Node, kind: Kind, volumeRoot: Bool) {
 }
 
 @discardableResult
-private func markHoldsReclaimable(_ node: Node) -> Bool {
-    var holds = node.kind == .reclaimable
-    for child in node.children where markHoldsReclaimable(child) {
-        holds = true
-    }
-    node.holdsReclaimable = holds
-    return holds
+private func sumReclaimable(_ node: Node) -> UInt64 {
+    node.reclaimableBytes = node.kind == .reclaimable
+        ? node.bytes : node.children.reduce(0) { $0 + sumReclaimable($1) }
+    return node.reclaimableBytes
 }
+
+/// Less than this is no reason to open a System folder: a `.git` holds a
+/// few kilobytes of LFS cache, which would otherwise lay it all out.
+private let worthOpening: UInt64 = 10_000_000
 
 extension Node {
     /// A System folder keeps its contents to itself, unless revealed or
-    /// holding something reclaimable: there is nothing else to get back there.
+    /// holding real reclaimable space: there is nothing else to get back.
     /// An app always does: it is deleted whole, never in parts.
     public func hidesContents(revealingSystem: Bool) -> Bool {
-        !revealingSystem && (isApp || kind == .system && !holdsReclaimable)
+        !revealingSystem && (isApp || kind == .system && reclaimableBytes < worthOpening)
     }
 }
 
