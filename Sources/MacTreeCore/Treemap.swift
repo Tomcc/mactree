@@ -72,8 +72,6 @@ extension Tile.Content: Equatable {
 public struct LayoutOptions: Equatable, Sendable {
     /// The gap between siblings, which is what separates them.
     public var padding: CGFloat = 3
-    /// Wider gaps between top-level directories, so that level reads first.
-    public var paddingOuter: CGFloat = 4
     /// Every tile fits a label; children that would be smaller are merged.
     public var minTile: CGFloat = 30
     public var maxChildren = 96
@@ -103,13 +101,12 @@ private func placeChildren(
     into tiles: inout [Tile]
 ) {
     let items = pickItems(of: node, in: area, options: options)
-    let padding = depth == 0 ? options.paddingOuter : options.padding
     for (item, raw) in zip(items, squarify(items.map(\.value), in: area)) {
-        var rect = raw.insetBy(dx: padding, dy: padding)
+        var rect = raw.insetBy(dx: options.padding, dy: options.padding)
         // Nested tiles run flush to their folder's right edge, so nesting
         // reads as an indent from the left only.
         if depth > 0, raw.maxX >= area.maxX - 0.5 {
-            rect.size.width += padding
+            rect.size.width += options.padding
         }
         guard rect.width >= options.minTile, rect.height >= options.minTile else {
             continue

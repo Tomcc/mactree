@@ -189,13 +189,7 @@ private struct MosaicCanvas: View, Equatable {
         label.draw(name, at: origin, anchor: .topLeading)
         let nameWidth = name.measure(in: owned.size).width
         let sizeWidth = sizeText.measure(in: owned.size).width
-        if tile.header != nil && tile.depth == 0 {
-            // First-level sizes sit at the far end, where they read as a column.
-            let x = owned.maxX - padding - sizeWidth
-            if x > origin.x + nameWidth + padding {
-                label.draw(sizeText, at: CGPoint(x: x, y: origin.y), anchor: .topLeading)
-            }
-        } else if tile.header == nil && tile.rect.maxY - owned.maxY >= lineHeight + 4 {
+        if tile.header == nil && tile.rect.maxY - owned.maxY >= lineHeight + 4 {
             label.draw(
                 sizeText, at: CGPoint(x: origin.x, y: owned.maxY + 3), anchor: .topLeading)
         } else if owned.width - padding * 2 - nameWidth > sizeWidth + 8 {
@@ -207,19 +201,20 @@ private struct MosaicCanvas: View, Equatable {
 
     /// Centred and italic, with its size below if there is room.
     private func paintSmallItemsLabel(_ context: inout GraphicsContext, _ tile: Tile) {
-        let name = context.resolve(
-            Text("small items").font(.system(size: 12.5).italic()).foregroundStyle(.secondary))
+        let font = Font.system(size: 12.5).italic()
+        var name = context.resolve(Text("small items").font(font).foregroundStyle(.secondary))
         let size = context.resolve(
             Text(formatBytes(tile.content.bytes)).font(.system(size: 12))
                 .foregroundStyle(.tertiary))
-        // Too narrow for the whole phrase: the status bar still names it.
-        guard name.measure(in: .init(width: 1000, height: 100)).width <= tile.rect.width - 8 else {
-            return
+        // Too narrow for the phrase: an ellipsis still says "more in here".
+        let fits = name.measure(in: .init(width: 1000, height: 100)).width <= tile.rect.width - 8
+        if !fits {
+            name = context.resolve(Text("\u{2026}").font(font).foregroundStyle(.secondary))
         }
         var label = context
         label.clip(to: Path(tile.rect))
         let center = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
-        guard tile.rect.height >= 40 else {
+        guard fits, tile.rect.height >= 40 else {
             label.draw(name, at: center, anchor: .center)
             return
         }
