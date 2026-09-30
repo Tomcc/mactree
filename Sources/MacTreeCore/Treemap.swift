@@ -8,7 +8,7 @@ public struct Tile: Sendable {
     public enum Content: Sendable {
         case node(Node)
         /// The merged tail of a long child list, so its area still counts.
-        case others(parent: Node, bytes: UInt64)
+        case others(parent: Node, bytes: UInt64, count: Int)
     }
 
     public let content: Content
@@ -44,7 +44,7 @@ extension Tile.Content: Equatable {
     public static func == (lhs: Self, rhs: Self) -> Bool {
         switch (lhs, rhs) {
         case (.node(let a), .node(let b)): a === b
-        case (.others(let a, _), .others(let b, _)): a === b
+        case (.others(let a, _, _), .others(let b, _, _)): a === b
         default: false
         }
     }
@@ -60,14 +60,14 @@ extension Tile.Content: Equatable {
     public var owner: Node {
         switch self {
         case .node(let node): node
-        case .others(let parent, _): parent
+        case .others(let parent, _, _): parent
         }
     }
 
     public var bytes: UInt64 {
         switch self {
         case .node(let node): node.bytes
-        case .others(_, let bytes): bytes
+        case .others(_, let bytes, _): bytes
         }
     }
 }
@@ -163,7 +163,9 @@ private func fitChildren(
         }
         if kept < ranked.count {
             let bytes = ranked.dropFirst(kept).reduce(0) { $0 + $1.bytes }
-            items.append((.others(parent: node, bytes: bytes), Double(bytes)))
+            items.append((
+                .others(parent: node, bytes: bytes, count: ranked.count - kept),
+                Double(bytes)))
         }
         items.sort { $0.value > $1.value }
         let placed = zip(items, squarify(items.map(\.value), in: area)).map { item, raw in

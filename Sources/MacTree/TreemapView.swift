@@ -40,7 +40,7 @@ struct TreemapView: View {
                 switch model.hovered {
                 case .node(let node):
                     NodeMenu(model: model, node: node)
-                case .others(let parent, _):
+                case .others(let parent, _, _):
                     SmallItemsMenu(model: model, parent: parent)
                 case nil:
                     EmptyView()
@@ -123,9 +123,10 @@ private struct MosaicCanvas: View, Equatable {
             let outline = rounded(tile.rect, radius)
             outlines[tile.depth, default: Path()].addPath(outline)
             bodies[tile.depth, default: [:]][tile.levelsBelow, default: Path()].addPath(outline)
+            // A file is all colour, a folder only its band: told apart at a glance.
             titles[tile.depth, default: [:]][
                 Title(kind: node.kind, levelsBelow: tile.levelsBelow), default: Path()
-            ].addPath(titleShape(tile))
+            ].addPath(node.isDir ? titleShape(tile) : outline)
             // Up the left side and along the top, following the corner.
             let inner = tile.rect.insetBy(dx: 0.5, dy: 0.5)
             highlights.move(to: CGPoint(x: inner.minX, y: inner.maxY - radius))
@@ -189,6 +190,10 @@ private struct MosaicCanvas: View, Equatable {
             paintSmallItemsLabel(&context, tile)
             return
         }
+        guard node.isDir else {
+            paintFileLabel(&context, tile, node)
+            return
+        }
         let owned = tile.title
         let text = node.displayName
         let size = formatBytes(node.bytes)
@@ -214,16 +219,8 @@ private struct MosaicCanvas: View, Equatable {
         var label = context
         let area = tile.header ?? tile.rect
         label.clip(to: Path(area))
-        // Text too long for the tile fades out 4 pt short of its right edge.
-        let end = area.maxX - 4
-        if origin.x + max(nameWidth, sizeBelow ? sizeWidth : 0) > end {
-            label.clipToLayer { mask in
-                mask.fill(
-                    Path(area),
-                    with: .linearGradient(
-                        Gradient(colors: [.black, .clear]),
-                        startPoint: CGPoint(x: end - 15, y: 0), endPoint: CGPoint(x: end, y: 0)))
-            }
+        if origin.x + max(nameWidth, sizeBelow ? sizeWidth : 0) > area.maxX - 4 {
+            fadeOut(&label, area)
         }
         label.draw(name, at: origin, anchor: .topLeading)
         if sizeBelow {
@@ -236,6 +233,45 @@ private struct MosaicCanvas: View, Equatable {
         }
     }
 
+    /// Centred, with the size below if there is room; a name too long to
+    /// centre starts at the left and fades out.
+    private func paintFileLabel(_ context: inout GraphicsContext, _ tile: Tile, _ node: Node) {
+        let name = context.resolve(
+            Text(node.displayName).font(.system(size: 12.5)).foregroundStyle(.primary))
+        let size = context.resolve(
+            Text(formatBytes(node.bytes)).font(.system(size: 12)).foregroundStyle(.secondary))
+        let padding: CGFloat = 9
+        let unbounded = CGSize(width: 10_000, height: 100)
+        let room = tile.rect.width - padding * 2
+        let twoLines = tile.rect.height >= 40
+        let lines = twoLines ? [name, size] : [name]
+        var label = context
+        label.clip(to: Path(tile.rect))
+        if lines.contains(where: { $0.measure(in: unbounded).width > room }) {
+            fadeOut(&label, tile.rect)
+        }
+        let heights = lines.map { $0.measure(in: unbounded).height }
+        var y = tile.rect.midY - (heights.reduce(0, +) + (twoLines ? 2 : 0)) / 2
+        for (line, height) in zip(lines, heights) {
+            let width = line.measure(in: unbounded).width
+            let x = width > room ? tile.rect.minX + padding : tile.rect.midX - width / 2
+            label.draw(line, at: CGPoint(x: x, y: y), anchor: .topLeading)
+            y += height + 2
+        }
+    }
+
+    /// Text too long for its tile fades out 4 pt short of the right edge.
+    private func fadeOut(_ label: inout GraphicsContext, _ area: CGRect) {
+        let end = area.maxX - 4
+        label.clipToLayer { mask in
+            mask.fill(
+                Path(area),
+                with: .linearGradient(
+                    Gradient(colors: [.black, .clear]),
+                    startPoint: CGPoint(x: end - 15, y: 0), endPoint: CGPoint(x: end, y: 0)))
+        }
+    }
+
     /// Centred and italic, with its size below if there is room: carved into
     /// the parent, dark with a light edge below, like letterpress.
     private func paintSmallItemsLabel(_ context: inout GraphicsContext, _ tile: Tile) {
@@ -244,13 +280,17 @@ private struct MosaicCanvas: View, Equatable {
         let edge = Color.white.opacity(dark ? 0.22 : 0.9)
         let font = Font.system(size: 12.5).italic()
         // Too narrow for the phrase: an ellipsis still says "more in here".
-        let measured = context.resolve(Text("small items").font(font))
+        guard case .others(_, _, let count) = tile.content else {
+            return
+        }
+        let title = smallItemsTitle(count)
+        let measured = context.resolve(Text(title).font(font))
             .measure(in: .init(width: 1000, height: 100))
         guard tile.rect.height >= measured.height else {
             return
         }
         let fits = measured.width <= tile.rect.width - 8
-        var lines = [Text(fits ? "small items" : "\u{2026}").font(font)]
+        var lines = [Text(fits ? title : "\u{2026}").font(font)]
         if fits && tile.rect.height >= 40 {
             lines.append(Text(formatBytes(tile.content.bytes)).font(.system(size: 12)))
         }
@@ -298,6 +338,10 @@ private struct RingsCanvas: View {
     private func tile(of content: Tile.Content) -> Tile? {
         tiles.first { $0.content == content }
     }
+}
+
+func smallItemsTitle(_ count: Int) -> String {
+    "\(formatCount(count)) small items"
 }
 
 /// Close to the window's own corners; top-level tiles a little rounder,

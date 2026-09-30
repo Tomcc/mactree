@@ -140,9 +140,9 @@ private struct StatusBar: View {
                     }
                     .buttonStyle(.plain)
                 }
-                if case .others = content {
+                if case .others(_, _, let count) = content {
                     Image(systemName: "chevron.compact.right").foregroundStyle(.tertiary)
-                    Text("small items").italic()
+                    Text(smallItemsTitle(count)).italic()
                 }
                 Text(formatBytes(content.bytes)).foregroundStyle(.secondary)
                     .padding(.leading, 6)

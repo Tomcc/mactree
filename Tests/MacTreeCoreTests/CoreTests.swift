@@ -175,7 +175,7 @@ func child(_ node: Node, _ names: String...) -> Node {
     options.maxChildren = 4
     let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 800, height: 500), options: options)
     let others = tiles.compactMap { tile -> UInt64? in
-        if case .others(_, let bytes) = tile.content {
+        if case .others(_, let bytes, _) = tile.content {
             return bytes
         }
         return nil
