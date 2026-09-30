@@ -25,15 +25,13 @@ public enum Kind: CaseIterable, Sendable {
     public var summary: String {
         switch self {
         case .reclaimable:
-            "Caches, build output, package stores, logs, temporary files and the Trash: "
-                + "usually safe to delete, since they come back when needed."
+            "Temporary or generated files that could be safe to delete"
         case .git:
-            "Tracked in a Git repository: once pushed, a copy lives elsewhere too."
+            "Files tracked by Git that could be restored"
         case .app:
             "Applications, shown whole: trash one to uninstall it."
         case .system:
-            "Library folders and dot-folders, owned by macOS and your tools. Shown closed "
-                + "unless they hold reclaimable space; double-click one to look inside."
+            "System or toolchain files that shouldn\u{2019}t be deleted without advanced knowledge"
         case .other:
             "Your own files, with no copy elsewhere that MacTree knows of."
         }
