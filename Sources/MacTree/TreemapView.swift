@@ -177,7 +177,7 @@ private struct MosaicCanvas: View, Equatable {
             return
         }
         let owned = tile.title
-        let text = node.displayName
+        let text = ([node] + tile.chain).map(\.displayName).joined(separator: " \u{203A} ")
         let size = formatBytes(node.bytes)
         let bold = tile.depth == 0 && tile.header != nil
         let name = context.resolve(

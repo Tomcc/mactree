@@ -26,9 +26,16 @@ public struct Tile: Sendable {
     public fileprivate(set) var levelsBelow = 0
     /// Deleted whole or not at all: a file, or a folder that hides its contents.
     public let isBlock: Bool
+    /// Lone folders folded into this one's band, outermost first; the tile
+    /// shows the last one's children.
+    public let chain: [Node]
 
-    init(content: Content, rect: CGRect, depth: Int, header: CGRect?, options: LayoutOptions) {
+    init(
+        content: Content, rect: CGRect, depth: Int, header: CGRect?, options: LayoutOptions,
+        chain: [Node] = []
+    ) {
         self.content = content
+        self.chain = chain
         isBlock = content.node.map {
             !$0.isDir || $0.hidesContents(revealingSystem: options.revealSystem)
         } ?? false
@@ -130,8 +137,17 @@ private func placeChildren(
         }
         let body = CGRect(
             x: rect.minX, y: header.maxY, width: rect.width, height: rect.maxY - header.maxY)
+        var inner = fitChildren(of: child, in: body, depth: depth + 1, options: options)
+        // A folder holding just one folder folds into it: a long path of lone
+        // folders costs one band, not a band each.
+        var chain: [Node] = []
+        while inner.count == 1, case .node(let only) = inner[0].content, only.isDir,
+            !only.hidesContents(revealingSystem: options.revealSystem)
+        {
+            chain.append(only)
+            inner = fitChildren(of: only, in: body, depth: depth + 1, options: options)
+        }
         // A body holding nothing but small items says less than the whole tile.
-        let inner = fitChildren(of: child, in: body, depth: depth + 1, options: options)
         if inner.count == 1, case .others = inner[0].content {
             tiles.append(Tile(
                 content: content, rect: rect, depth: depth, header: nil, options: options))
@@ -139,9 +155,10 @@ private func placeChildren(
         }
         let index = tiles.count
         tiles.append(Tile(
-            content: content, rect: rect, depth: depth, header: header, options: options))
+            content: content, rect: rect, depth: depth, header: header, options: options,
+            chain: chain))
         let below = placeChildren(
-            of: child, in: body, depth: depth + 1, options: options, into: &tiles)
+            of: chain.last ?? child, in: body, depth: depth + 1, options: options, into: &tiles)
         tiles[index].levelsBelow = below
         levels = max(levels, below + 1)
     }

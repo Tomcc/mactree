@@ -359,3 +359,21 @@ func child(_ node: Node, _ names: String...) -> Node {
     }
     #expect(child(careful, "data").bytes == child(plain, "data").bytes - child(plain, "data", "share").bytes)
 }
+
+@Test func loneFolderChainsFoldIntoOneBand() {
+    let root = Node(name: "/r", isDir: true)
+    let a = Node(name: "a", isDir: true)
+    let b = Node(name: "b", isDir: true)
+    let c = Node(name: "c", isDir: true)
+    c.adopt(Node(name: "x", isDir: false, bytes: 600))
+    c.adopt(Node(name: "y", isDir: false, bytes: 400))
+    b.adopt(c)
+    a.adopt(b)
+    root.adopt(a)
+    root.adopt(Node(name: "file", isDir: false, bytes: 1000))
+    root.aggregate()
+    let tiles = layout(root, in: CGRect(x: 0, y: 0, width: 1200, height: 600), options: LayoutOptions())
+    let names = tiles.compactMap { $0.node?.name }.sorted()
+    #expect(names == ["a", "file", "x", "y"], "b and c share a's band")
+    #expect(tiles.first { $0.node === a }?.chain.map(\.name) == ["b", "c"])
+}
