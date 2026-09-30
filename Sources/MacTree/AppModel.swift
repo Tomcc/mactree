@@ -26,6 +26,8 @@ final class AppModel {
     private(set) var treeVersion = 0
     private(set) var emptyingTrash = false
     var confirmingEmptyTrash = false
+    /// Where you were, newest last; paths, so they outlive a rescan.
+    private(set) var history: [String] = []
     /// Blocks opened in place with a double-click, until closed again.
     private(set) var unpacked: Set<ObjectIdentifier> = []
     var showingComputer = false
@@ -41,7 +43,10 @@ final class AppModel {
     }
 
     /// `showing` is where to land; by default a rescan stays where it was.
-    func scan(_ path: String, showing: String? = nil) {
+    func scan(_ path: String, showing: String? = nil, remembering: Bool = true) {
+        if remembering {
+            remember()
+        }
         let progress = ScanProgress()
         phase = .scanning(path: path)
         scannedEntries = 0
@@ -75,7 +80,8 @@ final class AppModel {
         // Keyed by node, so a fresh tree starts packed.
         unpacked = []
         enclosing = enclosingFolders(of: tree.path)
-        current = wasAt.flatMap { find($0, in: tree) } ?? tree
+        // A folder gone since the last scan lands on what is left of its path.
+        current = wasAt.flatMap { find($0, in: tree, orNearest: true) } ?? tree
         selected = nil
         hovered = nil
         phase = .ready
@@ -97,7 +103,7 @@ final class AppModel {
 
     func rescan() {
         if let root {
-            scan(root.path)
+            scan(root.path, remembering: false)
         }
     }
 
@@ -150,9 +156,10 @@ final class AppModel {
     }
 
     func open(_ node: Node) {
-        guard canOpen(node) else {
+        guard canOpen(node), node !== current else {
             return
         }
+        remember()
         current = node
         selected = nil
         hovered = nil
@@ -173,8 +180,34 @@ final class AppModel {
             }
             return
         }
+        remember()
         selected = .node(current)
         self.current = parent
+    }
+
+    /// Back to where you were, rescanning it if it was in another scan.
+    func goBack() {
+        guard let path = history.popLast() else {
+            return
+        }
+        guard let root, let node = find(path, in: root) else {
+            scan(path, showing: path, remembering: false)
+            return
+        }
+        current = node
+        selected = nil
+        hovered = nil
+    }
+
+    private func remember() {
+        if let current {
+            history.append(current.path)
+        }
+    }
+
+    /// A file opens in its app, as from Finder.
+    func launch(_ node: Node) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: node.path))
     }
 
     func revealInFinder(_ node: Node) {
@@ -224,7 +257,7 @@ final class AppModel {
 
     /// `~/.Trash` in the scanned tree, if the scan reached it.
     var trashNode: Node? {
-        root.flatMap { find(trashPath, in: $0) }.flatMap { $0.path == trashPath ? $0 : nil }
+        root.flatMap { find(trashPath, in: $0) }
     }
 
     private var trashPath: String { NSHomeDirectory() + "/.Trash" }
@@ -284,14 +317,17 @@ final class AppModel {
     }
 
     /// Walks our own tree by name, so no path string is parsed from outside.
-    private func find(_ path: String, in tree: Node) -> Node? {
-        guard path.hasPrefix(tree.path) else {
+    /// Firmlinked spellings of a path are equal.
+    private func find(_ path: String, in tree: Node, orNearest: Bool = false) -> Node? {
+        let base = canonicalPath(tree.path)
+        let target = canonicalPath(path)
+        guard target == base || target.hasPrefix(base + "/") else {
             return nil
         }
         var node = tree
-        for part in path.dropFirst(tree.path.count).split(separator: "/") {
+        for part in target.dropFirst(base.count).split(separator: "/") {
             guard let next = node.children.first(where: { $0.name == part }) else {
-                return node
+                return orNearest ? node : nil
             }
             node = next
         }

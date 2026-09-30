@@ -47,7 +47,9 @@ struct TreemapView: View {
                 // every single click while it waits. A block opens in place
                 // first; small items open their folder, where they get room.
                 if let tile, NSApp.currentEvent?.clickCount == 2 {
-                    if tile.isBlock, let node = tile.node, node.isDir {
+                    if let node = tile.node, !node.isDir {
+                        model.launch(node)
+                    } else if tile.isBlock, let node = tile.node {
                         model.unpack(node)
                     } else {
                         model.open(tile.content.owner)

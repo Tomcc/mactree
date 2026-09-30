@@ -59,6 +59,9 @@ struct MacTreeApp: App {
                 .disabled(model.selected?.node.map { !model.canTrash($0) } ?? true)
             }
             CommandMenu("Go") {
+                Button("Back") { model.goBack() }
+                    .keyboardShortcut("[")
+                    .disabled(model.history.isEmpty)
                 Button("Enclosing Folder") { model.up() }
                     .keyboardShortcut(.upArrow)
                     .disabled(!model.canGoUp)

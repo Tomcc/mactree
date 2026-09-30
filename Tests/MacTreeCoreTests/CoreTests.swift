@@ -417,3 +417,10 @@ private func isVolumeRootPath(_ info: statfs) -> String {
     #expect(shown.map(\.0).sorted() == ["Mono.framework", "Tools"], "the drawn folder shows its children")
     #expect(shown.allSatisfy { $0.1 }, "which are blocks while System is hidden")
 }
+
+@Test func firmlinkedPathsAreOneFolder() {
+    #expect(canonicalPath("/System/Volumes/Data/Users/ann") == "/Users/ann")
+    #expect(canonicalPath("/Users/ann") == "/Users/ann")
+    #expect(canonicalPath("/System/Volumes/Data") == "")
+    #expect(canonicalPath("/System/Volumes/DataX") == "/System/Volumes/DataX")
+}

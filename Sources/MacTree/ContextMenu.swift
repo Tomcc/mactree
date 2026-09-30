@@ -45,7 +45,9 @@ struct ContextMenuLayer: NSViewRepresentable {
             menu.autoenablesItems = false
             switch content {
             case .node(let node):
-                if model.canOpen(node) {
+                if !node.isDir {
+                    menu.addItem(ActionItem("Open") { model.launch(node) })
+                } else if model.canOpen(node) {
                     menu.addItem(ActionItem("Open") { model.open(node) })
                 }
                 menu.addItem(ActionItem("Show in Finder") { model.revealInFinder(node) })

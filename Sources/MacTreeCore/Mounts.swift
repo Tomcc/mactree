@@ -88,3 +88,12 @@ public func enclosingFolders(of path: String) -> [Folder] {
     }
     return folders
 }
+
+/// Firmlinks make /System/Volumes/Data/Users and /Users one folder; this is
+/// the short form, "" for the data volume itself, for comparing paths.
+public func canonicalPath(_ path: String) -> String {
+    if path == dataVolume {
+        return ""
+    }
+    return path.hasPrefix(dataVolume + "/") ? String(path.dropFirst(dataVolume.count)) : path
+}

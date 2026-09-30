@@ -73,11 +73,18 @@ struct ContentView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                model.goBack()
+            } label: {
+                Label("Back", systemImage: "chevron.backward")
+            }
+            .help("Go back to where you were")
+            .disabled(model.history.isEmpty)
             Button {
                 model.up()
             } label: {
-                Label("Enclosing Folder", systemImage: "chevron.backward")
+                Label("Enclosing Folder", systemImage: "arrow.up")
             }
             .help("Go to the enclosing folder")
             .disabled(!model.canGoUp)
