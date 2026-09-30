@@ -5,15 +5,16 @@ import Darwin
 // Reclaimable wins: a cache inside the system is a cache.
 
 public enum Kind: CaseIterable, Sendable {
-    case reclaimable, git, system, other
+    case reclaimable, git, app, system, other
 
     /// What the legend lists, in its order.
-    public static let legend: [Kind] = [.reclaimable, .git, .system]
+    public static let legend: [Kind] = [.reclaimable, .git, .app, .system]
 
     public var label: String {
         switch self {
         case .reclaimable: "Reclaimable"
         case .git: "Git"
+        case .app: "Apps"
         case .system: "System"
         case .other: "Other"
         }
@@ -105,6 +106,8 @@ private func classifyChildren(of node: Node, kind: Kind, reclaim: Reclaim?, volu
         let childKind: Kind
         if childReclaim != nil {
             childKind = .reclaimable
+        } else if child.isApp {
+            childKind = .app
         } else if child.tracked {
             // Before System: a repository's `.github` is its own, not the OS's.
             childKind = .git
@@ -134,8 +137,9 @@ private func markHoldsReclaimable(_ node: Node) -> Bool {
 extension Node {
     /// A System folder keeps its contents to itself, unless revealed or
     /// holding something reclaimable: there is nothing else to get back there.
+    /// An app always does: it is deleted whole, never in parts.
     public func hidesContents(revealingSystem: Bool) -> Bool {
-        kind == .system && !holdsReclaimable && !revealingSystem
+        !revealingSystem && (isApp || kind == .system && !holdsReclaimable)
     }
 }
 

@@ -95,7 +95,7 @@ private struct MosaicCanvas: View, Equatable {
             // A file is all colour, a folder only its band: told apart at a glance.
             titles[tile.depth, default: [:]][
                 Title(kind: node.kind, levelsBelow: tile.levelsBelow), default: Path()
-            ].addPath(node.isDir ? titleShape(tile) : outline)
+            ].addPath(drawsAsFile(tile) ? outline : titleShape(tile))
             // Up the left side and along the top, following the corner.
             let inner = tile.rect.insetBy(dx: 0.5, dy: 0.5)
             highlights.move(to: CGPoint(x: inner.minX, y: inner.maxY - radius))
@@ -159,7 +159,7 @@ private struct MosaicCanvas: View, Equatable {
             paintSmallItemsLabel(&context, tile)
             return
         }
-        guard node.isDir else {
+        guard !drawsAsFile(tile) else {
             paintFileLabel(&context, tile, node)
             return
         }
@@ -220,7 +220,17 @@ private struct MosaicCanvas: View, Equatable {
             fadeOut(&label, tile.rect)
         }
         let heights = lines.map { $0.measure(in: unbounded).height }
-        var y = tile.rect.midY - (heights.reduce(0, +) + (twoLines ? 2 : 0)) / 2
+        let textHeight = heights.reduce(0, +) + (twoLines ? 2 : 0)
+        var y = tile.rect.midY - textHeight / 2
+        // An app shows its icon above the name, when there is room for one.
+        let icon = min(64, room, tile.rect.height - textHeight - 20)
+        if node.isApp, icon >= 20 {
+            let top = tile.rect.midY - (icon + 6 + textHeight) / 2
+            context.draw(
+                Image(nsImage: appIcon(node.path)),
+                in: CGRect(x: tile.rect.midX - icon / 2, y: top, width: icon, height: icon))
+            y = top + icon + 6
+        }
         for (line, height) in zip(lines, heights) {
             let width = line.measure(in: unbounded).width
             let x = width > room ? tile.rect.minX + padding : tile.rect.midX - width / 2
@@ -307,6 +317,26 @@ private struct RingsCanvas: View {
     private func tile(of content: Tile.Content) -> Tile? {
         tiles.first { $0.content == content }
     }
+}
+
+/// Files, and apps unless revealed: one thing each, so one flat colour.
+private func drawsAsFile(_ tile: Tile) -> Bool {
+    guard let node = tile.node else {
+        return false
+    }
+    return !node.isDir || node.isApp && tile.header == nil
+}
+
+/// Icons are looked up once per app; the mosaic repaints on every resize.
+@MainActor private var appIcons: [String: NSImage] = [:]
+
+@MainActor private func appIcon(_ path: String) -> NSImage {
+    if let icon = appIcons[path] {
+        return icon
+    }
+    let icon = NSWorkspace.shared.icon(forFile: path)
+    appIcons[path] = icon
+    return icon
 }
 
 func smallItemsTitle(_ count: Int) -> String {

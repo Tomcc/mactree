@@ -11,6 +11,7 @@ enum Palette {
         switch kind {
         case .reclaimable: Color(nsColor: .systemGreen)
         case .git: Color(nsColor: .systemOrange)
+        case .app: Color(nsColor: .systemPurple)
         case .system: Color(nsColor: .systemBlue)
         case .other: Color(nsColor: .systemGray)
         }

@@ -50,6 +50,11 @@ public final class Node: @unchecked Sendable {
         return base.hasSuffix("/") ? base + name : base + "/" + name
     }
 
+    /// An application bundle: a folder on disk, one thing to the user.
+    public var isApp: Bool {
+        isDir && (name as NSString).pathExtension == "app"
+    }
+
     /// The name to show: the root's full path shortened to its last part.
     public var displayName: String {
         parent == nil ? (name as NSString).lastPathComponent : name

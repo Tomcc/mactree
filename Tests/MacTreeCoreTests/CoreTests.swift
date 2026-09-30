@@ -108,8 +108,13 @@ func child(_ node: Node, _ names: String...) -> Node {
     try tree.file(".cargo/registry/cache/crate", bytes: 1)
     try tree.file(".cargo/bin/cargo", bytes: 1)
     try tree.file("Library/stuff", bytes: 1)
+    try tree.file("Apps/Tool.app/Contents/Caches/c", bytes: 1)
     let root = Scanner.scan(tree.root, progress: ScanProgress()).root
 
+    #expect(child(root, "Apps", "Tool.app").kind == .app)
+    #expect(child(root, "Apps", "Tool.app").hidesContents(revealingSystem: false),
+        "apps are whole, even holding something reclaimable")
+    #expect(!child(root, "Apps", "Tool.app").hidesContents(revealingSystem: true))
     #expect(child(root, ".cache", "kache", "store").kind == .reclaimable)
     #expect(child(root, ".cache", "kache", "store").reclaim == .regenerable)
     #expect(child(root, "rusty", "target").reclaim == .buildOutput)
